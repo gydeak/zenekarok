@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magyar szimfonikus zenekarok — adatvizualizáció</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root{
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1e2530;
+    --ink-soft: #5b6472;
+    --line: #e2e0da;
+    --accent: #2f5d5e;
+    --accent-2: #b5442e;
+    --accent-3: #8a7148;
+    --accent-4: #3d6ea5;
+    --warn-bg: #fbf3e7;
+    --warn-border: #e3c48f;
+    --warn-ink: #7a5518;
+    --focus: #2f5d5e;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; background: var(--bg); color: var(--ink);
+    font-family: "Iowan Old Style","Georgia","Charter",serif;
+  }
+  .wrap{ max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  header{ margin-bottom: 32px; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+  .eyebrow{
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px;
+    color: var(--accent); font-weight: 600; margin: 0 0 8px;
+  }
+  h1{ font-size: 30px; margin: 0 0 6px; font-weight: 600; letter-spacing: -0.01em; }
+  .sub{ font-family: "Helvetica Neue", Arial, sans-serif; color: var(--ink-soft); font-size: 14.5px; max-width: 640px; line-height: 1.5; }
+
+  .panel{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 24px; margin-bottom: 28px;
+  }
+  .panel h2{
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 13px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ink-soft); font-weight: 700; margin: 0 0 18px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .panel h2 .n{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff;
+    font-size:11px; font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .datapanel{
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+    gap: 18px; font-family:"Helvetica Neue", Arial, sans-serif;
+  }
+  .datafield{
+    border: 1px dashed var(--line); border-radius: 8px; padding: 14px 16px;
+    background: #fdfdfc;
+  }
+  .datafield label{
+    display:block; font-size: 12px; color: var(--ink-soft); font-weight:700; margin-bottom: 8px;
+  }
+  .datafield input[type="file"]{
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 12.5px; width: 100%;
+  }
+  .status{
+    margin-top: 8px; font-size: 12px; display:flex; align-items:center; gap:6px;
+  }
+  .status .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .status.ok .dot{ background: #3f8f5f; }
+  .status.pending .dot{ background: #c9a227; }
+  .status.err .dot{ background: #b5442e; }
+  .status.ok{ color:#2c6b45; }
+  .status.pending{ color:#8a6d10; }
+  .status.err{ color:#8a3122; }
+
+  .controls{
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+    gap: 18px; margin-bottom: 20px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+  .field label{
+    display:block; font-size: 12px; color: var(--ink-soft); margin-bottom: 6px; font-weight:600;
+  }
+  select{
+    width:100%; border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+    background:#fdfdfc; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 13.5px; color: var(--ink);
+  }
+  select[multiple]{ min-height: 108px; }
+  select:focus{ outline: 2px solid var(--focus); outline-offset: 1px; }
+  select:disabled{ opacity: 0.5; }
+  .hint{ font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+
+  .mode-row{
+    display:flex; flex-wrap: wrap; gap: 18px; align-items:center; margin-bottom: 12px;
+    font-family:"Helvetica Neue", Arial, sans-serif; font-size: 13px;
+    border-bottom: 1px dashed var(--line); padding-bottom: 12px;
+  }
+  .mode-row label{ display:flex; align-items:center; gap:6px; cursor:pointer; color: var(--ink-soft); }
+  .mode-row input{ accent-color: var(--accent); }
+
+  .unit-warning{
+    font-family:"Helvetica Neue", Arial, sans-serif; font-size: 12px;
+    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-ink);
+    border-radius: 6px; padding: 8px 12px; margin: 4px 0 16px; display:none;
+  }
+  .unit-warning.show{ display:block; }
+
+  .field-baseyear{ display: none; }
+  .field-baseyear.show{ display: block; }
+
+  .chart{ width: 100%; height: 460px; }
+  .empty-msg{
+    font-family:"Helvetica Neue", Arial, sans-serif; font-size: 13px; color: var(--ink-soft);
+    text-align:center; padding: 60px 20px;
+  }
+
+  footer{
+    font-family:"Helvetica Neue", Arial, sans-serif; font-size: 11.5px; color: var(--ink-soft);
+    text-align:center; margin-top: 30px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Kulturális finanszírozás &nbsp;·&nbsp; Magyarország</p>
+    <h1>Szimfonikus zenekarok adatvizualizációja</h1>
+    <p class="sub">Zenekari pénzügyi és statisztikai adatok éves bontásban, összevetve a nemzetgazdasági és kulturális kiadási kontextussal. Az adatok a saját CSV fájljaidból töltődnek be.</p>
+  </header>
+
+  <section class="panel">
+    <h2><span class="n">↑</span>Adatfájlok</h2>
+    <div class="datapanel">
+      <div class="datafield">
+        <label for="file-zenekarok">zenekarok.csv</label>
+        <input type="file" id="file-zenekarok" accept=".csv,text/csv">
+        <div class="status pending" id="status-zenekarok"><span class="dot"></span><span>Automatikus betöltés folyamatban…</span></div>
+      </div>
+      <div class="datafield">
+        <label for="file-altalanos">altalanos.csv</label>
+        <input type="file" id="file-altalanos" accept=".csv,text/csv">
+        <div class="status pending" id="status-altalanos"><span class="dot"></span><span>Automatikus betöltés folyamatban…</span></div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:14px;">Ha a fájl ugyanabban a mappában van, mint ez a HTML, és http(s)-en keresztül van megnyitva, automatikusan betöltődik. Különben válaszd ki kézzel.</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="n">1</span>Zenekari mutatók évek szerint</h2>
+    <div class="controls">
+      <div class="field">
+        <label for="orch-select-1">Zenekar(ok)</label>
+        <select id="orch-select-1" multiple disabled></select>
+        <div class="hint">Ctrl/Cmd + kattintás a többes kijelöléshez</div>
+      </div>
+      <div class="field">
+        <label for="year-select-1">Év(ek)</label>
+        <select id="year-select-1" multiple disabled></select>
+        <div class="hint">Üresen hagyva: minden elérhető év</div>
+      </div>
+      <div class="field">
+        <label for="indicator-select-1">Mutató</label>
+        <select id="indicator-select-1" disabled></select>
+      </div>
+    </div>
+    <div id="chart1" class="chart"><div class="empty-msg">Tölts fel egy zenekarok.csv fájlt a fenti mezővel.</div></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="n">2</span>Összevetés: zenekari mutató vs. országos mutató</h2>
+    <div class="controls">
+      <div class="field">
+        <label for="orch-select-2">Zenekar(ok)</label>
+        <select id="orch-select-2" multiple disabled></select>
+        <div class="hint">Ctrl/Cmd + kattintás a többes kijelöléshez</div>
+      </div>
+      <div class="field">
+        <label for="indicator-select-2a">Zenekari mutató</label>
+        <select id="indicator-select-2a" disabled></select>
+      </div>
+      <div class="field">
+        <label for="indicator-select-2b">Országos mutató</label>
+        <select id="indicator-select-2b" disabled></select>
+      </div>
+      <div class="field field-baseyear" id="baseyear-field">
+        <label for="baseyear-select">Kiindulási év (100%)</label>
+        <select id="baseyear-select"></select>
+        <div class="hint">Kiválasztható közös bázisév a divergenciához</div>
+      </div>
+    </div>
+    <div class="mode-row">
+      <label><input type="radio" name="mode2" value="dual" checked disabled> Kettős tengelyes összevetés (Összegzett)</label>
+      <label><input type="radio" name="mode2" value="divergence" disabled> Bázisévhez viszonyított divergenciák (%)</label>
+      <label><input type="radio" name="mode2" value="ratio_ts" disabled> Arány: Sima idősor + Átlag</label>
+      <label><input type="radio" name="mode2" value="ratio_stacked" disabled> Arány: Halmozott oszlop</label>
+      <label><input type="radio" name="mode2" value="ratio_percent" disabled> Arány: 100%-ra halmozott oszlop</label>
+    </div>
+    <div class="unit-warning" id="unit-warning">⚠ A két kiválasztott mutató mértékegysége nem közvetlenül összevethető, az arány csak tájékoztató jellegű.</div>
+    <div id="chart2" class="chart"><div class="empty-msg">Tölts fel mindkét CSV fájlt a fenti mezőkkel.</div></div>
+  </section>
+
+  <footer>A zenekari pénzügyi sorok ezer Ft-ban, az országos GDP/kultúra sorok millió Ft-ban értendők — az összevetésnél ez automatikusan korrigálásra kerül.</footer>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------
+   0. ÁLLAPOT ÉS GLOBÁLIS SZÍNEK
+   --------------------------------------------------------------------- */
+let zenekarokData = null;   
+let altalanosData = null;   
+let zenekarIndicatorKeys = [];
+let altalanosIndicatorKeys = [];
+let orchestraNames = [];
+let allYears = [];
+
+let orchestraColors = {}; 
+const PALETTE = ["#2f5d5e","#b5442e","#8a7148","#3d6ea5","#7a5c8e","#4c7a3f","#a06a2e","#4a5568","#2b6cb0","#dd6b20"];
+
+function parseCSV(raw){
+  const lines = raw.replace(/^\uFEFF/, "").trim().split("\n").map(l => l.replace(/\r$/,""));
+  const headers = lines[0].split(";").map(h => h.trim().replace(/^"|"$/g,""));
+  const rows = [];
+  for(let i=1;i<lines.length;i++){
+    if(!lines[i].trim()) continue;
+    const cells = lines[i].split(";").map(c => c.trim().replace(/^"|"$/g,""));
+    const row = {};
+    headers.forEach((h,idx) => { row[h] = cells[idx] !== undefined ? cells[idx] : ""; });
+    rows.push(row);
+  }
+  return { headers, rows };
+}
+
+function toNumber(str){
+  if(str === undefined || str === null) return null;
+  let s = String(str).trim();
+  if(s === "") return null;
+  s = s.replace(/[\s\u00A0]/g, "");
+  s = s.replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+const ZENEKAR_META = {
+  bevetel:            { label: "Bevétel (eFt)",                          type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  kiadas:              { label: "Kiadás (eFt)",                           type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  koncert_belfold:     { label: "Belföldi koncertek száma",               type: "count", unitClass: "count", toBase: v => v },
+  koncert_kulfold:     { label: "Külföldi koncertek száma",               type: "count", unitClass: "count", toBase: v => v },
+  latogato_belfold:    { label: "Belföldi látogatók száma",               type: "count", unitClass: "count", toBase: v => v },
+  latogato_kulfold:    { label: "Külföldi látogatók száma",               type: "count", unitClass: "count", toBase: v => v },
+  kozpenz:             { label: "Közpénz-támogatás (eFt)",                type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  sajat_bevetel:       { label: "Saját bevétel (eFt)",                    type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  szemelyi_jellegu:    { label: "Személyi jellegű ráfordítás (eFt)",      type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  berkotseg:           { label: "Bérköltség (eFt)",                       type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  szem_egyeb:          { label: "Egyéb személyi jellegű kifizetés (eFt)", type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  berjarulek:          { label: "Bérjárulék (eFt)",                       type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  letszam:             { label: "Létszám (fő)",                          type: "count", unitClass: "count", toBase: v => v },
+  anyagjellegu:        { label: "Anyagjellegű ráfordítás (eFt)",         type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
+  egy_fore_szemelyi:   { label: "Egy főre jutó személyi költség (eFt/hó)", type: "wage_ezerFt", unitClass: "wage", toBase: v => v*1000 }
+};
+
+const ALTALANOS_META = {
+  gdp:       { label: "GDP (millió Ft)",                        type: "money_millioFt", unitClass: "money", toBase: v => v },
+  hicp:      { label: "HICP (harmonizált fogyasztói árindex)",  type: "index", unitClass: "index", toBase: v => v },
+  zene_tanc: { label: "Zene és tánc kiadás (millió Ft)",        type: "money_millioFt", unitClass: "money", toBase: v => v },
+  kultura:   { label: "Kultúra összesen kiadás (millió Ft)",    type: "money_millioFt", unitClass: "money", toBase: v => v },
+  atlag_ber: { label: "Bruttó átlagkereset (Ft/hó)",            type: "wage_ft", unitClass: "wage", toBase: v => v }
+};
+
+function metaFor(key, isZenekar){
+  const dict = isZenekar ? ZENEKAR_META : ALTALANOS_META;
+  return dict[key] || { label: key, type: "unknown", unitClass: "unknown", toBase: v => v };
+}
+
+/* ---------------------------------------------------------------------
+   DOM KEZELÉS & BETÖLTÉS
+   --------------------------------------------------------------------- */
+function fillSelect(el, items){
+  el.innerHTML = "";
+  items.forEach(it => {
+    const opt = document.createElement("option");
+    opt.value = it.value; opt.textContent = it.label;
+    if(it.selected) opt.selected = true;
+    el.appendChild(opt);
+  });
+}
+
+const fileZenekarok = document.getElementById("file-zenekarok");
+const fileAltalanos = document.getElementById("file-altalanos");
+
+const orchSel1 = document.getElementById("orch-select-1");
+const yearSel1 = document.getElementById("year-select-1");
+const indSel1  = document.getElementById("indicator-select-1");
+const orchSel2 = document.getElementById("orch-select-2");
+const indSel2a = document.getElementById("indicator-select-2a");
+const indSel2b = document.getElementById("indicator-select-2b");
+const baseYearSel = document.getElementById("baseyear-select");
+const baseYearField = document.getElementById("baseyear-field");
+const modeRadios = document.querySelectorAll('input[name="mode2"]');
+const unitWarning = document.getElementById("unit-warning");
+
+function getSelectedValues(sel){ return Array.from(sel.selectedOptions).map(o => o.value); }
+function setStatus(id, state, text){
+  const el = document.getElementById(id); el.className = "status " + state;
+  el.querySelector("span:last-child").textContent = text;
+}
+
+function ingestZenekarokCSV(text){
+  try {
+    const parsed = parseCSV(text);
+    zenekarIndicatorKeys = parsed.headers.filter(h => h !== "ev" && h !== "zenekar");
+    zenekarokData = parsed.rows.map(r => {
+      const out = { ev: parseInt(r.ev,10), zenekar: r.zenekar };
+      zenekarIndicatorKeys.forEach(h => { out[h] = toNumber(r[h]); });
+      return out;
+    });
+    orchestraNames = [...new Set(zenekarokData.map(d => d.zenekar))].sort();
+    allYears = [...new Set(zenekarokData.map(d => d.ev))].sort((a,b) => a-b);
+
+    orchestraColors = {};
+    orchestraNames.forEach((name, idx) => {
+      orchestraColors[name] = PALETTE[idx % PALETTE.length];
+    });
+
+    fillSelect(orchSel1, orchestraNames.map(n => ({value:n, label:n, selected:true})));
+    fillSelect(yearSel1, allYears.map(y => ({value:y, label:y})));
+    fillSelect(indSel1, zenekarIndicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="bevetel"})));
+    fillSelect(orchSel2, orchestraNames.map(n => ({value:n, label:n, selected:true})));
+    fillSelect(indSel2a, zenekarIndicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="bevetel"})));
+
+    [orchSel1, yearSel1, indSel1, orchSel2, indSel2a].forEach(el => el.disabled = false);
+    setStatus("status-zenekarok", "ok", `Betöltve — ${orchestraNames.length} zenekar, ${allYears.length} év`);
+    renderChart1(); maybeEnableChart2();
+  } catch(err) {
+    setStatus("status-zenekarok", "err", "Hiba a struktúrában.");
+  }
+}
+
+function ingestAltalanosCSV(text){
+  try {
+    const parsed = parseCSV(text);
+    altalanosIndicatorKeys = parsed.headers.filter(h => h !== "ev");
+    altalanosData = parsed.rows.map(r => {
+      const out = { ev: parseInt(r.ev,10) };
+      altalanosIndicatorKeys.forEach(h => { out[h] = toNumber(r[h]); });
+      return out;
+    });
+    fillSelect(indSel2b, altalanosIndicatorKeys.map(k => ({value:k, label: metaFor(k,false).label, selected: k==="gdp"})));
+    indSel2b.disabled = false;
+    setStatus("status-altalanos", "ok", `Betöltve — ${altalanosData.length} év`);
+    maybeEnableChart2();
+  } catch(err) {
+    setStatus("status-altalanos", "err", "Hiba a struktúrában.");
+  }
+}
+
+function maybeEnableChart2(){ 
+  if(zenekarokData && altalanosData){ 
+    modeRadios.forEach(r => r.disabled = false); 
+    updateBaseYearDropdown();
+    renderChart2(); 
+  } 
+}
+
+function updateBaseYearDropdown(){
+  if(!zenekarokData || !altalanosData) return;
+  
+  const chosenOrchestras = getSelectedValues(orchSel2);
+  const indA = indSel2a.value;
+  const indB = indSel2b.value;
+
+  const altalanosYears = altalanosData.filter(d => d[indB] !== null && d[indB] !== undefined).map(d => d.ev);
+  
+  const validYears = allYears.filter(y => {
+    if(!altalanosYears.includes(y)) return false;
+    return chosenOrchestras.every(orch => {
+      const row = zenekarokData.find(d => d.zenekar === orch && d.ev === y);
+      return row && row[indA] !== null && row[indA] !== undefined;
+    });
+  });
+
+  const currentSelected = baseYearSel.value;
+  fillSelect(baseYearSel, validYears.map(y => ({value: y, label: `${y} (100%)`})));
+  
+  if(validYears.includes(parseInt(currentSelected, 10))){
+    baseYearSel.value = currentSelected;
+  } else if(validYears.length > 0){
+    baseYearSel.value = validYears[0];
+  }
+}
+
+/* ---------------------------------------------------------------------
+   5. 1. GRAFIKON — Sima vonaldiagram
+   --------------------------------------------------------------------- */
+function renderChart1(){
+  if(!zenekarokData) return;
+  const chosenOrchestras = getSelectedValues(orchSel1);
+  const chosenYearsRaw = getSelectedValues(yearSel1).map(Number);
+  const chosenYears = chosenYearsRaw.length ? chosenYearsRaw : allYears;
+  const indicator = indSel1.value;
+
+  const traces = chosenOrchestras.map((orch) => {
+    const rows = zenekarokData.filter(d => d.zenekar === orch && chosenYears.includes(d.ev)).sort((a,b) => a.ev - b.ev);
+    return {
+      x: rows.map(r => r.ev), y: rows.map(r => r[indicator]), name: orch,
+      type: "scatter", mode: "lines+markers", 
+      line: { width: 2.5, color: orchestraColors[orch] },
+      marker: { size: 7 }, connectgaps: false
+    };
+  });
+
+  const layout = {
+    paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+    font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
+    margin: { t: 20, r: 24, l: 64, b: 44 },
+    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1 },
+    yaxis: { title: metaFor(indicator,true).label, gridcolor: "#eeece6", zeroline:false },
+    legend: { orientation: "h", y: -0.2 }, hovermode: "x unified"
+  };
+  document.getElementById("chart1").innerHTML = "";
+  Plotly.newPlot("chart1", traces, layout, {responsive:true, displaylogo:false});
+}
+
+/* ---------------------------------------------------------------------
+   6. 2. GRAFIKON — Összevetések és divergenciák
+   --------------------------------------------------------------------- */
+function renderChart2(){
+  if(!zenekarokData || !altalanosData) return;
+  let chosenOrchestras = getSelectedValues(orchSel2);
+  const indA = indSel2a.value; 
+  const indB = indSel2b.value; 
+  const mode = document.querySelector('input[name="mode2"]:checked').value;
+
+  const metaA = metaFor(indA, true);
+  const metaB = metaFor(indB, false);
+  const bothComparable = metaA.unitClass === metaB.unitClass && metaA.unitClass !== "unknown";
+  
+  if(mode === "divergence"){
+    baseYearField.classList.add("show");
+  } else {
+    baseYearField.classList.remove("show");
+  }
+  
+  unitWarning.classList.toggle("show", mode !== "dual" && mode !== "divergence" && !bothComparable);
+
+  const altalanosByYear = {};
+  altalanosData.forEach(d => { altalanosByYear[d.ev] = d[indB]; });
+
+  let years = allYears.filter(y => altalanosByYear[y] !== null && altalanosByYear[y] !== undefined);
+
+  if (mode === "ratio_percent" || mode === "divergence") {
+    years = years.filter(y => {
+      return chosenOrchestras.every(orch => {
+        const row = zenekarokData.find(d => d.zenekar === orch && d.ev === y);
+        return row && row[indA] !== null && row[indA] !== undefined;
+      });
+    });
+  }
+
+  let traces = [];
+  let layout = {
+    paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+    font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
+    margin: { t: 20, r: 64, l: 64, b: 44 },
+    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1 },
+    legend: { orientation: "h", y: -0.2 }, hovermode: "x unified"
+  };
+
+  if(mode === "dual"){
+    const valuesByYear = {};
+    years.forEach(y => {
+      const relevantRows = zenekarokData.filter(d => d.ev === y && chosenOrchestras.includes(d.zenekar));
+      const hasAllData = chosenOrchestras.every(orch => {
+        const row = relevantRows.find(d => d.zenekar === orch);
+        return row && row[indA] !== null && row[indA] !== undefined;
+      });
+
+      if (hasAllData && chosenOrchestras.length > 0) {
+        let annualSum = 0;
+        relevantRows.forEach(d => { annualSum += d[indA]; });
+        valuesByYear[y] = annualSum;
+      } else {
+        valuesByYear[y] = null;
+      }
+    });
+
+    let baseYear = null;
+    for (let y of years) {
+      if (valuesByYear[y] !== null && altalanosByYear[y] !== null) {
+        baseYear = y;
+        break;
+      }
+    }
+
+    let y1Range = null;
+    let y2Range = null;
+
+    if (baseYear !== null) {
+      const b1 = valuesByYear[baseYear];
+      const b2 = altalanosByYear[baseYear];
+
+      if (b1 > 0 && b2 > 0) {
+        let minPct = 1.0; 
+        let maxPct = 1.0;
+
+        years.forEach(y => {
+          if (valuesByYear[y] !== null) {
+            const pct = valuesByYear[y] / b1;
+            if (pct < minPct) minPct = pct;
+            if (pct > maxPct) maxPct = pct;
+          }
+          if (altalanosByYear[y] !== null) {
+            const pct = altalanosByYear[y] / b2;
+            if (pct < minPct) minPct = pct;
+            if (pct > maxPct) maxPct = pct;
+          }
+        });
+
+        const padding = 0.05;
+        minPct = Math.max(0, minPct - padding);
+        maxPct = maxPct + padding;
+
+        y1Range = [b1 * minPct, b1 * maxPct];
+        y2Range = [b2 * minPct, b2 * maxPct];
+      }
+    }
+
+    traces = [
+      { 
+        x: years, y: years.map(y => valuesByYear[y]), name: `${metaA.label} (összesítve)`, 
+        type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#1e2530" },
+        connectgaps: false
+      },
+      { 
+        x: years, y: years.map(y => altalanosByYear[y]), name: `${metaB.label} (országos)`, 
+        type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#b5442e", dash: "dot" }, yaxis: "y2" 
+      }
+    ];
+
+    layout.yaxis = { title: metaA.label, gridcolor: "#eeece6", zeroline:false };
+    layout.yaxis2 = { title: metaB.label, overlaying: "y", side: "right", showgrid:false };
+
+    if(y1Range && y2Range) {
+      layout.yaxis.range = y1Range;
+      layout.yaxis2.range = y2Range;
+    }
+
+  } else if (mode === "divergence") {
+    const selectedBaseYear = parseInt(baseYearSel.value, 10);
+    
+    if(!selectedBaseYear || !years.includes(selectedBaseYear)) {
+      document.getElementById("chart2").innerHTML = '<div class="empty-msg">Nincs választható közös bázisév az adatokban a kiválasztott szűréssel.</div>';
+      return;
+    }
+
+    const baseValB = altalanosByYear[selectedBaseYear];
+
+    chosenOrchestras.forEach(orch => {
+      const baseRow = zenekarokData.find(d => d.zenekar === orch && d.ev === selectedBaseYear);
+      const baseValA = baseRow ? baseRow[indA] : null;
+
+      if(baseValA && baseValA > 0) {
+        const indexData = years.map(y => {
+          const row = zenekarokData.find(d => d.zenekar === orch && d.ev === y);
+          return row ? (row[indA] / baseValA) * 100 : null;
+        });
+
+        traces.push({
+          x: years, y: indexData, name: `${orch} (%)`,
+          type: "scatter", mode: "lines+markers",
+          line: { width: 2, color: orchestraColors[orch] },
+          marker: { size: 6 }, connectgaps: false
+        });
+      }
+    });
+
+    if(baseValB && baseValB > 0) {
+      const indexDataB = years.map(y => (altalanosByYear[y] / baseValB) * 100);
+      traces.push({
+        x: years, y: indexDataB, name: `${metaB.label} (országos bázis %)`,
+        type: "scatter", mode: "lines+markers",
+        line: { width: 3, color: "#b5442e", dash: "dot" },
+        marker: { size: 6 }, yaxis: "y2"
+      });
+    }
+
+    layout.yaxis = { title: `${metaA.label} relatív változása (%-ban, bázis: ${selectedBaseYear})`, gridcolor: "#eeece6", zeroline:true };
+    layout.yaxis2 = { title: `${metaB.label} relatív változása (%-ban, bázis: ${selectedBaseYear})`, overlaying: "y", side: "right", showgrid:false, zeroline:false };
+
+    let minPct = 100;
+    let maxPct = 100;
+    traces.forEach(t => {
+      t.y.forEach(v => {
+        if(v !== null) {
+          if (v < minPct) minPct = v;
+          if (v > maxPct) maxPct = v;
+        }
+      });
+    });
+    
+    const padding = 5; 
+    layout.yaxis.range = [Math.max(0, minPct - padding), maxPct + padding];
+    layout.yaxis2.range = [Math.max(0, minPct - padding), maxPct + padding];
+
+  } else {
+    layout.yaxis = { title: "Arány (%)", gridcolor: "#eeece6", zeroline:false };
+
+    let orchestraObjects = chosenOrchestras.map((orch) => {
+      const ratios = years.map(y => {
+        const row = zenekarokData.find(d => d.zenekar === orch && d.ev === y);
+        if(!row || row[indA] === null || row[indA] === undefined) return null; 
+        const valA = bothComparable ? metaA.toBase(row[indA]) : row[indA];
+        const valB = bothComparable ? metaB.toBase(altalanosByYear[y]) : altalanosByYear[y];
+        return valB ? (valA / valB) * 100 : null;
+      });
+      return { name: orch, ratios: ratios, color: orchestraColors[orch] };
+    });
+
+    if(mode === "ratio_ts"){
+      orchestraObjects.forEach(o => {
+        traces.push({
+          x: years, y: o.ratios, name: o.name, type: "scatter", mode: "lines+markers", 
+          line: { width: 2, color: o.color }, connectgaps: false
+        });
+      });
+
+      const strictAverage = years.map((y, yIdx) => {
+        if (orchestraObjects.length < 2) return null;
+        const valuesInYear = orchestraObjects.map(o => o.ratios[yIdx]);
+        const anyMissing = valuesInYear.some(val => val === null || val === undefined);
+        if(anyMissing) return null;
+        return valuesInYear.reduce((sum, val) => sum + val, 0) / valuesInYear.length;
+      });
+
+      traces.push({
+        x: years, y: strictAverage, name: "Szigorú átlag", type: "scatter", mode: "lines", 
+        line: { width: 4, color: "#000000" }, connectgaps: false 
+      });
+
+    } else if(mode === "ratio_stacked"){
+      orchestraObjects.forEach(o => {
+        const firstActiveIdx = o.ratios.findIndex(r => r !== null && r !== undefined);
+        o.firstYear = firstActiveIdx !== -1 ? years[firstActiveIdx] : 9999;
+      });
+      orchestraObjects.sort((a, b) => a.firstYear - b.firstYear);
+
+      orchestraObjects.forEach(o => {
+        traces.push({
+          x: years, y: o.ratios, name: o.name, type: "bar", marker: { color: o.color }
+        });
+      });
+      layout.barmode = "stack";
+
+    } else if(mode === "ratio_percent"){
+      if (years.length > 0) {
+        orchestraObjects.sort((a, b) => {
+          const valA = a.ratios[0] || 0;
+          const valB = b.ratios[0] || 0;
+          return valB - valA; 
+        });
+      }
+
+      orchestraObjects.forEach(o => {
+        traces.push({
+          x: years, y: o.ratios, name: o.name, type: "bar", marker: { color: o.color }
+        });
+      });
+      layout.barmode = "stack";
+      layout.barnorm = "percent";
+      layout.yaxis.title = "Relatív részesedés az arányból (%)";
+    }
+  }
+
+  document.getElementById("chart2").innerHTML = "";
+  Plotly.newPlot("chart2", traces, layout, {responsive:true, displaylogo:false});
+}
+
+/* ---------------------------------------------------------------------
+   7. ESEMÉNYEK REGISZTRÁCIÓJA & INIT
+   --------------------------------------------------------------------- */
+[orchSel1, yearSel1, indSel1].forEach(el => el.addEventListener("change", renderChart1));
+
+[orchSel2, indSel2a, indSel2b].forEach(el => el.addEventListener("change", () => {
+  updateBaseYearDropdown();
+  renderChart2();
+}));
+
+baseYearSel.addEventListener("change", renderChart2);
+modeRadios.forEach(r => r.addEventListener("change", renderChart2));
+
+// Kézi fájl-tallózás figyelése
+fileZenekarok.addEventListener("change", function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = function(evt) { ingestZenekarokCSV(evt.target.result); };
+  r.readAsText(file, "UTF-8");
+});
+
+fileAltalanos.addEventListener("change", function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = function(evt) { ingestAltalanosCSV(evt.target.result); };
+  r.readAsText(file, "UTF-8");
+});
+
+// AUTOMATIKUS BETÖLTÉS INDÍTÁSA OLDALNYITÁSKOR
+document.addEventListener("DOMContentLoaded", () => {
+  fetch("zenekarok.csv")
+    .then(res => {
+      if(!res.ok) throw new Error();
+      return res.text();
+    })
+    .then(text => ingestZenekarokCSV(text))
+    .catch(() => setStatus("status-zenekarok", "pending", "Nincs automata fájl. Válassz egyet kézzel!"));
+
+  fetch("altalanos.csv")
+    .then(res => {
+      if(!res.ok) throw new Error();
+      return res.text();
+    })
+    .then(text => ingestAltalanosCSV(text))
+    .catch(() => setStatus("status-altalanos", "pending", "Nincs automata fájl. Válassz egyet kézzel!"));
+});
+</script>
+</body>
+</html>
