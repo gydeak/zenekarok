@@ -199,25 +199,25 @@
       <label><input type="radio" name="mode2" value="ratio_stacked" disabled> Arány: Halmozott oszlop</label>
       <label><input type="radio" name="mode2" value="ratio_percent" disabled> Arány: 100%-ra halmozott oszlop</label>
     </div>
-    <div class="unit-warning" id="unit-warning">⚠ A két kiválasztott mutató mértékegysége nem közvetlenül összevethető, az arány csak tájékoztató jellegű.</div>
+    <div class="unit-warning" id="unit-warning">⚠ A két kiválasztott mutató mértékegység-kategóriája nem egyezik (pl. pénzösszeg vs. létszám), az arány csak tájékoztató jellegű.</div>
     <div id="chart2" class="chart"><div class="empty-msg">Tölts fel mindkét CSV fájlt a fenti mezőkkel.</div></div>
   </section>
 
-  <footer>A zenekari pénzügyi sorok ezer Ft-ban, az országos GDP/kultúra sorok millió Ft-ban értendők — az összevetésnél ez automatikusan korrigálásra kerül.</footer>
+  <footer>A pénzügyi mutatók mértékegysége (Ft, eFt, MFt vagy Mrd Ft) grafikononként, a megjelenített legkisebb érték alapján, automatikusan kerül kiválasztásra — függetlenül az eredeti CSV mértékegységétől.</footer>
 </div>
 
 <script>
 /* ---------------------------------------------------------------------
    0. ÁLLAPOT ÉS GLOBÁLIS SZÍNEK
    --------------------------------------------------------------------- */
-let zenekarokData = null;   
-let altalanosData = null;   
+let zenekarokData = null;
+let altalanosData = null;
 let zenekarIndicatorKeys = [];
 let altalanosIndicatorKeys = [];
 let orchestraNames = [];
 let allYears = [];
 
-let orchestraColors = {}; 
+let orchestraColors = {};
 const PALETTE = ["#2f5d5e","#b5442e","#8a7148","#3d6ea5","#7a5c8e","#4c7a3f","#a06a2e","#4a5568","#2b6cb0","#dd6b20"];
 
 function parseCSV(raw){
@@ -244,35 +244,131 @@ function toNumber(str){
   return isNaN(n) ? null : n;
 }
 
+/* ---------------------------------------------------------------------
+   METAADATOK
+   Minden pénzösszeg-jellegű ("money" / "wage") mutató a beolvasáskor
+   azonnal Ft-ra (alap SI mértékegység) kerül átváltásra a `toFt`
+   függvénnyel, függetlenül attól, hogy a CSV-ben eredetileg eFt-ban,
+   MFt-ban vagy Ft-ban szerepelt-e. A megjelenítéskor (tengelyfeliratok,
+   tooltip) a chooseUnit() dinamikusan választja ki a legjobban
+   olvasható mértékegységet (Ft / eFt / MFt / Mrd Ft) az adott
+   grafikonon éppen látható legkisebb érték alapján.
+   --------------------------------------------------------------------- */
 const ZENEKAR_META = {
-  bevetel:            { label: "Bevétel (eFt)",                          type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  kiadas:              { label: "Kiadás (eFt)",                           type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  koncert_belfold:     { label: "Belföldi koncertek száma",               type: "count", unitClass: "count", toBase: v => v },
-  koncert_kulfold:     { label: "Külföldi koncertek száma",               type: "count", unitClass: "count", toBase: v => v },
-  latogato_belfold:    { label: "Belföldi látogatók száma",               type: "count", unitClass: "count", toBase: v => v },
-  latogato_kulfold:    { label: "Külföldi látogatók száma",               type: "count", unitClass: "count", toBase: v => v },
-  kozpenz:             { label: "Közpénz-támogatás (eFt)",                type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  sajat_bevetel:       { label: "Saját bevétel (eFt)",                    type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  szemelyi_jellegu:    { label: "Személyi jellegű ráfordítás (eFt)",      type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  berkotseg:           { label: "Bérköltség (eFt)",                       type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  szem_egyeb:          { label: "Egyéb személyi jellegű kifizetés (eFt)", type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  berjarulek:          { label: "Bérjárulék (eFt)",                       type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  letszam:             { label: "Létszám (fő)",                          type: "count", unitClass: "count", toBase: v => v },
-  anyagjellegu:        { label: "Anyagjellegű ráfordítás (eFt)",         type: "money_ezerFt", unitClass: "money", toBase: v => v/1000 },
-  egy_fore_szemelyi:   { label: "Egy főre jutó személyi költség (eFt/hó)", type: "wage_ezerFt", unitClass: "wage", toBase: v => v*1000 }
+  bevetel:            { label: "Bevétel",                              unitClass: "money", toFt: v => v * 1000 },
+  kiadas:              { label: "Kiadás",                               unitClass: "money", toFt: v => v * 1000 },
+  koncert_belfold:     { label: "Belföldi koncertek száma",             unitClass: "count", toFt: v => v },
+  koncert_kulfold:     { label: "Külföldi koncertek száma",             unitClass: "count", toFt: v => v },
+  latogato_belfold:    { label: "Belföldi látogatók száma",             unitClass: "count", toFt: v => v },
+  latogato_kulfold:    { label: "Külföldi látogatók száma",             unitClass: "count", toFt: v => v },
+  kozpenz:             { label: "Közpénz-támogatás",                    unitClass: "money", toFt: v => v * 1000 },
+  sajat_bevetel:       { label: "Saját bevétel",                        unitClass: "money", toFt: v => v * 1000 },
+  szemelyi_jellegu:    { label: "Személyi jellegű ráfordítás",          unitClass: "money", toFt: v => v * 1000 },
+  berkotseg:           { label: "Bérköltség",                           unitClass: "money", toFt: v => v * 1000 },
+  szem_egyeb:          { label: "Egyéb személyi jellegű kifizetés",     unitClass: "money", toFt: v => v * 1000 },
+  berjarulek:          { label: "Bérjárulék",                           unitClass: "money", toFt: v => v * 1000 },
+  letszam:             { label: "Létszám (fő)",                         unitClass: "count", toFt: v => v },
+  anyagjellegu:        { label: "Anyagjellegű ráfordítás",              unitClass: "money", toFt: v => v * 1000 },
+  egy_fore_szemelyi:   { label: "Egy főre jutó személyi költség",       unitClass: "wage",  perSuffix: "/hó", toFt: v => v * 1000 }
 };
 
 const ALTALANOS_META = {
-  gdp:       { label: "GDP (millió Ft)",                        type: "money_millioFt", unitClass: "money", toBase: v => v },
-  hicp:      { label: "HICP (harmonizált fogyasztói árindex)",  type: "index", unitClass: "index", toBase: v => v },
-  zene_tanc: { label: "Zene és tánc kiadás (millió Ft)",        type: "money_millioFt", unitClass: "money", toBase: v => v },
-  kultura:   { label: "Kultúra összesen kiadás (millió Ft)",    type: "money_millioFt", unitClass: "money", toBase: v => v },
-  atlag_ber: { label: "Bruttó átlagkereset (Ft/hó)",            type: "wage_ft", unitClass: "wage", toBase: v => v }
+  gdp:       { label: "GDP",                                        unitClass: "money", toFt: v => v * 1e6 },
+  hicp:      { label: "HICP (harmonizált fogyasztói árindex)",      unitClass: "index", toFt: v => v },
+  zene_tanc: { label: "Zene és tánc kiadás",                        unitClass: "money", toFt: v => v * 1e6 },
+  kultura:   { label: "Kultúra összesen kiadás",                    unitClass: "money", toFt: v => v * 1e6 },
+  atlag_ber: { label: "Bruttó átlagkereset",                        unitClass: "wage",  perSuffix: "/hó", toFt: v => v }
 };
 
 function metaFor(key, isZenekar){
   const dict = isZenekar ? ZENEKAR_META : ALTALANOS_META;
-  return dict[key] || { label: key, type: "unknown", unitClass: "unknown", toBase: v => v };
+  return dict[key] || { label: key, unitClass: "unknown", toFt: v => v };
+}
+
+/* ---------------------------------------------------------------------
+   MÉRTÉKEGYSÉG-VÁLASZTÁS
+   --------------------------------------------------------------------- */
+const MONEY_UNITS = [
+  { suffix: "Mrd Ft", divisor: 1e9 },
+  { suffix: "MFt",    divisor: 1e6 },
+  { suffix: "eFt",    divisor: 1e3 },
+  { suffix: "Ft",     divisor: 1 }
+];
+
+// Kiválasztja a legnagyobb mértékegységet, amellyel a legkisebb (nem nulla)
+// látható érték is legalább 1 egész helyiértékkel rendelkezik.
+function chooseUnit(valuesInFt){
+  const abs = valuesInFt
+    .filter(v => v !== null && v !== undefined && !isNaN(v) && v !== 0)
+    .map(v => Math.abs(v));
+  if(abs.length === 0) return MONEY_UNITS[MONEY_UNITS.length - 1];
+  const minVal = Math.min(...abs);
+  for(const u of MONEY_UNITS){
+    if(minVal / u.divisor >= 1) return u;
+  }
+  return MONEY_UNITS[MONEY_UNITS.length - 1];
+}
+
+function axisLabel(meta, unit){
+  if(meta.unitClass === "money" || meta.unitClass === "wage"){
+    return `${meta.label} (${unit.suffix}${meta.perSuffix || ""})`;
+  }
+  return meta.label;
+}
+
+function hu(n, decimals){
+  return n.toLocaleString("hu-HU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+/* ---------------------------------------------------------------------
+   EGYSÉGES, ÉRTÉK SZERINT CSÖKKENŐ SORRENDŰ TOOLTIP (vonaldiagramokhoz)
+   --------------------------------------------------------------------- */
+const globalTooltip = document.createElement("div");
+globalTooltip.id = "global-chart-tooltip";
+globalTooltip.style.cssText = "position:fixed; z-index:2000; pointer-events:none; " +
+  "background:#1e2530; color:#fff; font-family:'Helvetica Neue',Arial,sans-serif; " +
+  "font-size:12.5px; padding:10px 13px; border-radius:7px; box-shadow:0 6px 18px rgba(0,0,0,0.3); " +
+  "display:none; line-height:1.6; white-space:nowrap;";
+document.body.appendChild(globalTooltip);
+
+function attachSortedHover(containerId){
+  const gd = document.getElementById(containerId);
+  if(!gd || typeof gd.on !== "function") return;
+  gd.on("plotly_hover", function(evt){
+    if(!evt.points || !evt.points.length) return;
+    const xVal = evt.points[0].x;
+    const rows = evt.points
+      .filter(p => p.data && p.data.type === "scatter")
+      .map(p => ({
+        name: p.data.name,
+        y: p.y,
+        color: (p.data.line && p.data.line.color) || "#ccc",
+        suffix: p.data._unitSuffix || "",
+        decimals: (p.data._decimals !== undefined) ? p.data._decimals : 0
+      }))
+      .filter(r => r.y !== null && r.y !== undefined)
+      .sort((a,b) => b.y - a.y);
+
+    if(!rows.length){ globalTooltip.style.display = "none"; return; }
+
+    let html = `<div style="font-weight:700;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:5px;">${xVal}</div>`;
+    rows.forEach(r => {
+      html += `<div style="display:flex;align-items:center;gap:7px;margin-top:3px;">` +
+              `<span style="width:9px;height:9px;border-radius:50%;background:${r.color};display:inline-block;flex-shrink:0;"></span>` +
+              `<span>${r.name}: <b>${hu(r.y, r.decimals)}${r.suffix ? " " + r.suffix : ""}</b></span></div>`;
+    });
+    globalTooltip.innerHTML = html;
+    globalTooltip.style.display = "block";
+
+    let left = evt.event.clientX + 18;
+    let top = evt.event.clientY - 24;
+    const estWidth = 240;
+    if(left + estWidth > window.innerWidth) left = evt.event.clientX - estWidth - 12;
+    if(top < 8) top = 8;
+    globalTooltip.style.left = left + "px";
+    globalTooltip.style.top = top + "px";
+  });
+  gd.on("plotly_unhover", function(){ globalTooltip.style.display = "none"; });
 }
 
 /* ---------------------------------------------------------------------
@@ -314,7 +410,10 @@ function ingestZenekarokCSV(text){
     zenekarIndicatorKeys = parsed.headers.filter(h => h !== "ev" && h !== "zenekar");
     zenekarokData = parsed.rows.map(r => {
       const out = { ev: parseInt(r.ev,10), zenekar: r.zenekar };
-      zenekarIndicatorKeys.forEach(h => { out[h] = toNumber(r[h]); });
+      zenekarIndicatorKeys.forEach(h => {
+        const raw = toNumber(r[h]);
+        out[h] = (raw === null) ? null : metaFor(h, true).toFt(raw);
+      });
       return out;
     });
     orchestraNames = [...new Set(zenekarokData.map(d => d.zenekar))].sort();
@@ -345,7 +444,10 @@ function ingestAltalanosCSV(text){
     altalanosIndicatorKeys = parsed.headers.filter(h => h !== "ev");
     altalanosData = parsed.rows.map(r => {
       const out = { ev: parseInt(r.ev,10) };
-      altalanosIndicatorKeys.forEach(h => { out[h] = toNumber(r[h]); });
+      altalanosIndicatorKeys.forEach(h => {
+        const raw = toNumber(r[h]);
+        out[h] = (raw === null) ? null : metaFor(h, false).toFt(raw);
+      });
       return out;
     });
     fillSelect(indSel2b, altalanosIndicatorKeys.map(k => ({value:k, label: metaFor(k,false).label, selected: k==="gdp"})));
@@ -357,23 +459,23 @@ function ingestAltalanosCSV(text){
   }
 }
 
-function maybeEnableChart2(){ 
-  if(zenekarokData && altalanosData){ 
-    modeRadios.forEach(r => r.disabled = false); 
+function maybeEnableChart2(){
+  if(zenekarokData && altalanosData){
+    modeRadios.forEach(r => r.disabled = false);
     updateBaseYearDropdown();
-    renderChart2(); 
-  } 
+    renderChart2();
+  }
 }
 
 function updateBaseYearDropdown(){
   if(!zenekarokData || !altalanosData) return;
-  
+
   const chosenOrchestras = getSelectedValues(orchSel2);
   const indA = indSel2a.value;
   const indB = indSel2b.value;
 
   const altalanosYears = altalanosData.filter(d => d[indB] !== null && d[indB] !== undefined).map(d => d.ev);
-  
+
   const validYears = allYears.filter(y => {
     if(!altalanosYears.includes(y)) return false;
     return chosenOrchestras.every(orch => {
@@ -384,7 +486,7 @@ function updateBaseYearDropdown(){
 
   const currentSelected = baseYearSel.value;
   fillSelect(baseYearSel, validYears.map(y => ({value: y, label: `${y} (100%)`})));
-  
+
   if(validYears.includes(parseInt(currentSelected, 10))){
     baseYearSel.value = currentSelected;
   } else if(validYears.length > 0){
@@ -401,14 +503,33 @@ function renderChart1(){
   const chosenYearsRaw = getSelectedValues(yearSel1).map(Number);
   const chosenYears = chosenYearsRaw.length ? chosenYearsRaw : allYears;
   const indicator = indSel1.value;
+  const meta = metaFor(indicator, true);
+
+  const visibleRawValues = zenekarokData
+    .filter(d => chosenOrchestras.includes(d.zenekar) && chosenYears.includes(d.ev))
+    .map(d => d[indicator])
+    .filter(v => v !== null && v !== undefined);
+
+  let unit = { divisor: 1, suffix: "" };
+  let decimals = 0;
+  if(meta.unitClass === "money" || meta.unitClass === "wage"){
+    unit = chooseUnit(visibleRawValues);
+  } else if(meta.unitClass === "index"){
+    decimals = 2;
+  }
+  const suffix = (meta.unitClass === "money" || meta.unitClass === "wage") ? (unit.suffix + (meta.perSuffix || "")) : "";
 
   const traces = chosenOrchestras.map((orch) => {
     const rows = zenekarokData.filter(d => d.zenekar === orch && chosenYears.includes(d.ev)).sort((a,b) => a.ev - b.ev);
     return {
-      x: rows.map(r => r.ev), y: rows.map(r => r[indicator]), name: orch,
-      type: "scatter", mode: "lines+markers", 
+      x: rows.map(r => r.ev),
+      y: rows.map(r => (r[indicator] === null || r[indicator] === undefined) ? null : r[indicator] / unit.divisor),
+      name: orch,
+      type: "scatter", mode: "lines+markers",
       line: { width: 2.5, color: orchestraColors[orch] },
-      marker: { size: 7 }, connectgaps: false
+      marker: { size: 7 }, connectgaps: false,
+      hoverinfo: "none",
+      _unitSuffix: suffix, _decimals: decimals
     };
   });
 
@@ -416,12 +537,14 @@ function renderChart1(){
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
     margin: { t: 20, r: 24, l: 64, b: 44 },
-    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1 },
-    yaxis: { title: metaFor(indicator,true).label, gridcolor: "#eeece6", zeroline:false },
-    legend: { orientation: "h", y: -0.2 }, hovermode: "x unified"
+    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1, showspikes:true, spikemode:"across", spikethickness:1, spikedash:"dot", spikecolor:"#999" },
+    yaxis: { title: axisLabel(meta, unit), gridcolor: "#eeece6", zeroline:false, tickformat: ",.0f", separatethousands:true },
+    legend: { orientation: "h", y: -0.2 },
+    hovermode: "x"
   };
   document.getElementById("chart1").innerHTML = "";
-  Plotly.newPlot("chart1", traces, layout, {responsive:true, displaylogo:false});
+  Plotly.newPlot("chart1", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
+  attachSortedHover("chart1");
 }
 
 /* ---------------------------------------------------------------------
@@ -430,20 +553,20 @@ function renderChart1(){
 function renderChart2(){
   if(!zenekarokData || !altalanosData) return;
   let chosenOrchestras = getSelectedValues(orchSel2);
-  const indA = indSel2a.value; 
-  const indB = indSel2b.value; 
+  const indA = indSel2a.value;
+  const indB = indSel2b.value;
   const mode = document.querySelector('input[name="mode2"]:checked').value;
 
   const metaA = metaFor(indA, true);
   const metaB = metaFor(indB, false);
   const bothComparable = metaA.unitClass === metaB.unitClass && metaA.unitClass !== "unknown";
-  
+
   if(mode === "divergence"){
     baseYearField.classList.add("show");
   } else {
     baseYearField.classList.remove("show");
   }
-  
+
   unitWarning.classList.toggle("show", mode !== "dual" && mode !== "divergence" && !bothComparable);
 
   const altalanosByYear = {};
@@ -461,38 +584,44 @@ function renderChart2(){
   }
 
   let traces = [];
+  let needsCustomHover = false;
   let layout = {
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
     margin: { t: 20, r: 64, l: 64, b: 44 },
-    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1 },
+    xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1, showspikes:true, spikemode:"across", spikethickness:1, spikedash:"dot", spikecolor:"#999" },
     legend: { orientation: "h", y: -0.2 }, hovermode: "x unified"
   };
 
   if(mode === "dual"){
-    const valuesByYear = {};
+    const rawValuesByYear = {};
     years.forEach(y => {
       const relevantRows = zenekarokData.filter(d => d.ev === y && chosenOrchestras.includes(d.zenekar));
-      const hasAllData = chosenOrchestras.every(orch => {
+      const hasAllData = chosenOrchestras.length > 0 && chosenOrchestras.every(orch => {
         const row = relevantRows.find(d => d.zenekar === orch);
         return row && row[indA] !== null && row[indA] !== undefined;
       });
+      rawValuesByYear[y] = hasAllData ? relevantRows.reduce((s,d) => s + d[indA], 0) : null;
+    });
 
-      if (hasAllData && chosenOrchestras.length > 0) {
-        let annualSum = 0;
-        relevantRows.forEach(d => { annualSum += d[indA]; });
-        valuesByYear[y] = annualSum;
-      } else {
-        valuesByYear[y] = null;
-      }
+    const unitA = (metaA.unitClass === "money" || metaA.unitClass === "wage")
+      ? chooseUnit(Object.values(rawValuesByYear))
+      : { divisor: 1, suffix: "" };
+    const unitB = (metaB.unitClass === "money" || metaB.unitClass === "wage")
+      ? chooseUnit(years.map(y => altalanosByYear[y]))
+      : { divisor: 1, suffix: "" };
+
+    const valuesByYear = {};
+    years.forEach(y => { valuesByYear[y] = (rawValuesByYear[y] === null) ? null : rawValuesByYear[y] / unitA.divisor; });
+    const altalanosByYearScaled = {};
+    years.forEach(y => {
+      const v = altalanosByYear[y];
+      altalanosByYearScaled[y] = (v === null || v === undefined) ? null : v / unitB.divisor;
     });
 
     let baseYear = null;
     for (let y of years) {
-      if (valuesByYear[y] !== null && altalanosByYear[y] !== null) {
-        baseYear = y;
-        break;
-      }
+      if (valuesByYear[y] !== null && altalanosByYearScaled[y] !== null) { baseYear = y; break; }
     }
 
     let y1Range = null;
@@ -500,10 +629,10 @@ function renderChart2(){
 
     if (baseYear !== null) {
       const b1 = valuesByYear[baseYear];
-      const b2 = altalanosByYear[baseYear];
+      const b2 = altalanosByYearScaled[baseYear];
 
       if (b1 > 0 && b2 > 0) {
-        let minPct = 1.0; 
+        let minPct = 1.0;
         let maxPct = 1.0;
 
         years.forEach(y => {
@@ -512,8 +641,8 @@ function renderChart2(){
             if (pct < minPct) minPct = pct;
             if (pct > maxPct) maxPct = pct;
           }
-          if (altalanosByYear[y] !== null) {
-            const pct = altalanosByYear[y] / b2;
+          if (altalanosByYearScaled[y] !== null) {
+            const pct = altalanosByYearScaled[y] / b2;
             if (pct < minPct) minPct = pct;
             if (pct > maxPct) maxPct = pct;
           }
@@ -529,28 +658,33 @@ function renderChart2(){
     }
 
     traces = [
-      { 
-        x: years, y: years.map(y => valuesByYear[y]), name: `${metaA.label} (összesítve)`, 
+      {
+        x: years, y: years.map(y => valuesByYear[y]), name: `${metaA.label} (összesítve)`,
         type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#1e2530" },
-        connectgaps: false
+        connectgaps: false, hoverinfo: "none",
+        _unitSuffix: unitA.suffix + (metaA.perSuffix || ""), _decimals: 0
       },
-      { 
-        x: years, y: years.map(y => altalanosByYear[y]), name: `${metaB.label} (országos)`, 
-        type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#b5442e", dash: "dot" }, yaxis: "y2" 
+      {
+        x: years, y: years.map(y => altalanosByYearScaled[y]), name: `${metaB.label} (országos)`,
+        type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#b5442e", dash: "dot" }, yaxis: "y2",
+        hoverinfo: "none",
+        _unitSuffix: unitB.suffix + (metaB.perSuffix || ""), _decimals: 0
       }
     ];
 
-    layout.yaxis = { title: metaA.label, gridcolor: "#eeece6", zeroline:false };
-    layout.yaxis2 = { title: metaB.label, overlaying: "y", side: "right", showgrid:false };
+    layout.yaxis = { title: axisLabel(metaA, unitA), gridcolor: "#eeece6", zeroline:false, tickformat: ",.0f", separatethousands:true };
+    layout.yaxis2 = { title: axisLabel(metaB, unitB), overlaying: "y", side: "right", showgrid:false, tickformat: ",.0f", separatethousands:true };
 
     if(y1Range && y2Range) {
       layout.yaxis.range = y1Range;
       layout.yaxis2.range = y2Range;
     }
+    layout.hovermode = "x";
+    needsCustomHover = true;
 
   } else if (mode === "divergence") {
     const selectedBaseYear = parseInt(baseYearSel.value, 10);
-    
+
     if(!selectedBaseYear || !years.includes(selectedBaseYear)) {
       document.getElementById("chart2").innerHTML = '<div class="empty-msg">Nincs választható közös bázisév az adatokban a kiválasztott szűréssel.</div>';
       return;
@@ -572,7 +706,8 @@ function renderChart2(){
           x: years, y: indexData, name: `${orch} (%)`,
           type: "scatter", mode: "lines+markers",
           line: { width: 2, color: orchestraColors[orch] },
-          marker: { size: 6 }, connectgaps: false
+          marker: { size: 6 }, connectgaps: false,
+          hoverinfo: "none", _unitSuffix: "%", _decimals: 1
         });
       }
     });
@@ -583,7 +718,8 @@ function renderChart2(){
         x: years, y: indexDataB, name: `${metaB.label} (országos bázis %)`,
         type: "scatter", mode: "lines+markers",
         line: { width: 3, color: "#b5442e", dash: "dot" },
-        marker: { size: 6 }, yaxis: "y2"
+        marker: { size: 6 }, yaxis: "y2",
+        hoverinfo: "none", _unitSuffix: "%", _decimals: 1
       });
     }
 
@@ -600,10 +736,12 @@ function renderChart2(){
         }
       });
     });
-    
-    const padding = 5; 
+
+    const padding = 5;
     layout.yaxis.range = [Math.max(0, minPct - padding), maxPct + padding];
     layout.yaxis2.range = [Math.max(0, minPct - padding), maxPct + padding];
+    layout.hovermode = "x";
+    needsCustomHover = true;
 
   } else {
     layout.yaxis = { title: "Arány (%)", gridcolor: "#eeece6", zeroline:false };
@@ -611,9 +749,9 @@ function renderChart2(){
     let orchestraObjects = chosenOrchestras.map((orch) => {
       const ratios = years.map(y => {
         const row = zenekarokData.find(d => d.zenekar === orch && d.ev === y);
-        if(!row || row[indA] === null || row[indA] === undefined) return null; 
-        const valA = bothComparable ? metaA.toBase(row[indA]) : row[indA];
-        const valB = bothComparable ? metaB.toBase(altalanosByYear[y]) : altalanosByYear[y];
+        if(!row || row[indA] === null || row[indA] === undefined) return null;
+        const valA = row[indA];
+        const valB = altalanosByYear[y];
         return valB ? (valA / valB) * 100 : null;
       });
       return { name: orch, ratios: ratios, color: orchestraColors[orch] };
@@ -622,8 +760,9 @@ function renderChart2(){
     if(mode === "ratio_ts"){
       orchestraObjects.forEach(o => {
         traces.push({
-          x: years, y: o.ratios, name: o.name, type: "scatter", mode: "lines+markers", 
-          line: { width: 2, color: o.color }, connectgaps: false
+          x: years, y: o.ratios, name: o.name, type: "scatter", mode: "lines+markers",
+          line: { width: 2, color: o.color }, connectgaps: false,
+          hoverinfo: "none", _unitSuffix: "%", _decimals: 1
         });
       });
 
@@ -636,9 +775,12 @@ function renderChart2(){
       });
 
       traces.push({
-        x: years, y: strictAverage, name: "Szigorú átlag", type: "scatter", mode: "lines", 
-        line: { width: 4, color: "#000000" }, connectgaps: false 
+        x: years, y: strictAverage, name: "Szigorú átlag", type: "scatter", mode: "lines",
+        line: { width: 4, color: "#000000" }, connectgaps: false,
+        hoverinfo: "none", _unitSuffix: "%", _decimals: 1
       });
+      layout.hovermode = "x";
+      needsCustomHover = true;
 
     } else if(mode === "ratio_stacked"){
       orchestraObjects.forEach(o => {
@@ -659,7 +801,7 @@ function renderChart2(){
         orchestraObjects.sort((a, b) => {
           const valA = a.ratios[0] || 0;
           const valB = b.ratios[0] || 0;
-          return valB - valA; 
+          return valB - valA;
         });
       }
 
@@ -675,7 +817,8 @@ function renderChart2(){
   }
 
   document.getElementById("chart2").innerHTML = "";
-  Plotly.newPlot("chart2", traces, layout, {responsive:true, displaylogo:false});
+  Plotly.newPlot("chart2", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
+  if(needsCustomHover) attachSortedHover("chart2");
 }
 
 /* ---------------------------------------------------------------------
