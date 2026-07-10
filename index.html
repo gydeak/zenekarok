@@ -321,6 +321,58 @@ function hu(n, decimals){
 }
 
 /* ---------------------------------------------------------------------
+   DINAMIKUS GRAFIKONCÍMEK
+   A cím a jelenlegi kijelölés alapján épül fel, így PNG-ként letöltve
+   (a Plotly kamera-gombjával) is egyértelmű, mit ábrázol a kép.
+   A plot-terület magasságát a cím helyével megnöveljük, hogy ne
+   vesszünk el hasznos területet.
+   --------------------------------------------------------------------- */
+const CHART_BASE_HEIGHT = 460;
+const TITLE_AREA_HEIGHT = 50;
+const CHART_MARGIN_T_WITH_TITLE = 70;
+
+function yearRangeLabel(years){
+  if(!years || !years.length) return "";
+  const sorted = [...years].sort((a,b) => a-b);
+  const first = sorted[0], last = sorted[sorted.length-1];
+  return first === last ? `${first}` : `${first}–${last}`;
+}
+
+function buildChart1Title(meta, chosenOrchestras, chosenYears){
+  const yearPart = yearRangeLabel(chosenYears);
+  const orchPart = chosenOrchestras.length ? chosenOrchestras.join(", ") : "";
+  let title = meta.label;
+  if(orchPart) title += ` — ${orchPart}`;
+  if(yearPart) title += ` (${yearPart})`;
+  return title;
+}
+
+const MODE_LABELS_HU = {
+  dual: "kettős tengelyes összevetés",
+  divergence: "bázisévhez viszonyított divergencia",
+  ratio_ts: "arány idősor",
+  ratio_stacked: "arány, halmozott oszlop",
+  ratio_percent: "arány, 100%-ra halmozott oszlop"
+};
+
+function buildChart2Title(metaA, metaB, mode, chosenOrchestras, years){
+  const yearPart = yearRangeLabel(years);
+  const orchPart = chosenOrchestras.length ? chosenOrchestras.join(", ") : "";
+  let title = `${metaA.label} vs. ${metaB.label} — ${MODE_LABELS_HU[mode] || mode}`;
+  if(orchPart) title += ` (${orchPart})`;
+  if(yearPart) title += `, ${yearPart}`;
+  return title;
+}
+
+function titleConfig(text){
+  return {
+    text: text,
+    font: { family: "'Iowan Old Style','Georgia','Charter',serif", size: 15.5, color: "#1e2530" },
+    x: 0.01, xanchor: "left", y: 0.97, yanchor: "top"
+  };
+}
+
+/* ---------------------------------------------------------------------
    EGYSÉGES, ÉRTÉK SZERINT CSÖKKENŐ SORRENDŰ TOOLTIP (vonaldiagramokhoz)
    --------------------------------------------------------------------- */
 const globalTooltip = document.createElement("div");
@@ -331,44 +383,90 @@ globalTooltip.style.cssText = "position:fixed; z-index:2000; pointer-events:none
   "display:none; line-height:1.6; white-space:nowrap;";
 document.body.appendChild(globalTooltip);
 
+// A Plotly touch-eseményeknél (mobil) az evt.event nem mindig ad clientX/Y-t
+// közvetlenül (pl. TouchEvent esetén touches/changedTouches tömbben van) —
+// ez a segédfüggvény mindkét esetet lefedi.
+function getClientXY(evt, fallbackEl){
+  const e = evt && evt.event;
+  if(e){
+    if(typeof e.clientX === "number" && typeof e.clientY === "number"){
+      return { x: e.clientX, y: e.clientY };
+    }
+    if(e.touches && e.touches.length){
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    if(e.changedTouches && e.changedTouches.length){
+      return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+  }
+  if(fallbackEl){
+    const rect = fallbackEl.getBoundingClientRect();
+    return { x: rect.left + rect.width/2, y: rect.top + 40 };
+  }
+  return { x: 20, y: 20 };
+}
+
+function showSortedTooltip(evt, gd){
+  if(!evt.points || !evt.points.length) return;
+  const xVal = evt.points[0].x;
+  const rows = evt.points
+    .filter(p => p.data && p.data.type === "scatter")
+    .map(p => ({
+      name: p.data.name,
+      y: p.y,
+      color: (p.data.line && p.data.line.color) || "#ccc",
+      suffix: p.data._unitSuffix || "",
+      decimals: (p.data._decimals !== undefined) ? p.data._decimals : 0
+    }))
+    .filter(r => r.y !== null && r.y !== undefined)
+    .sort((a,b) => b.y - a.y);
+
+  if(!rows.length){ globalTooltip.style.display = "none"; return; }
+
+  let html = `<div style="font-weight:700;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:5px;">${xVal}</div>`;
+  rows.forEach(r => {
+    html += `<div style="display:flex;align-items:center;gap:7px;margin-top:3px;">` +
+            `<span style="width:9px;height:9px;border-radius:50%;background:${r.color};display:inline-block;flex-shrink:0;"></span>` +
+            `<span>${r.name}: <b>${hu(r.y, r.decimals)}${r.suffix ? " " + r.suffix : ""}</b></span></div>`;
+  });
+  globalTooltip.innerHTML = html;
+  globalTooltip.style.display = "block";
+
+  const pos = getClientXY(evt, gd);
+  const estWidth = 240;
+  let left = pos.x + 18;
+  let top = pos.y - 24;
+  if(left + estWidth > window.innerWidth) left = pos.x - estWidth - 12;
+  if(left < 4) left = 4;
+  if(top < 8) top = 8;
+  if(top + 120 > window.innerHeight) top = window.innerHeight - 130;
+  globalTooltip.style.left = left + "px";
+  globalTooltip.style.top = top + "px";
+}
+
 function attachSortedHover(containerId){
   const gd = document.getElementById(containerId);
   if(!gd || typeof gd.on !== "function") return;
-  gd.on("plotly_hover", function(evt){
-    if(!evt.points || !evt.points.length) return;
-    const xVal = evt.points[0].x;
-    const rows = evt.points
-      .filter(p => p.data && p.data.type === "scatter")
-      .map(p => ({
-        name: p.data.name,
-        y: p.y,
-        color: (p.data.line && p.data.line.color) || "#ccc",
-        suffix: p.data._unitSuffix || "",
-        decimals: (p.data._decimals !== undefined) ? p.data._decimals : 0
-      }))
-      .filter(r => r.y !== null && r.y !== undefined)
-      .sort((a,b) => b.y - a.y);
 
-    if(!rows.length){ globalTooltip.style.display = "none"; return; }
-
-    let html = `<div style="font-weight:700;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:5px;">${xVal}</div>`;
-    rows.forEach(r => {
-      html += `<div style="display:flex;align-items:center;gap:7px;margin-top:3px;">` +
-              `<span style="width:9px;height:9px;border-radius:50%;background:${r.color};display:inline-block;flex-shrink:0;"></span>` +
-              `<span>${r.name}: <b>${hu(r.y, r.decimals)}${r.suffix ? " " + r.suffix : ""}</b></span></div>`;
-    });
-    globalTooltip.innerHTML = html;
-    globalTooltip.style.display = "block";
-
-    let left = evt.event.clientX + 18;
-    let top = evt.event.clientY - 24;
-    const estWidth = 240;
-    if(left + estWidth > window.innerWidth) left = evt.event.clientX - estWidth - 12;
-    if(top < 8) top = 8;
-    globalTooltip.style.left = left + "px";
-    globalTooltip.style.top = top + "px";
-  });
+  // Egér: hover (asztali böngészők)
+  gd.on("plotly_hover", function(evt){ showSortedTooltip(evt, gd); });
   gd.on("plotly_unhover", function(){ globalTooltip.style.display = "none"; });
+
+  // Érintőképernyő: koppintásra jelenik meg (a hover eseményt sok mobil
+  // böngésző nem váltja ki érintésre, de a click/tap eseményt igen).
+  gd.on("plotly_click", function(evt){ showSortedTooltip(evt, gd); });
+
+  // Máshova koppintva/kattintva tűnjön el a tooltip.
+  document.addEventListener("touchstart", function(e){
+    if(globalTooltip.style.display === "block" && !gd.contains(e.target)){
+      globalTooltip.style.display = "none";
+    }
+  }, { passive: true });
+  document.addEventListener("click", function(e){
+    if(globalTooltip.style.display === "block" && !gd.contains(e.target)){
+      globalTooltip.style.display = "none";
+    }
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -534,15 +632,18 @@ function renderChart1(){
   });
 
   const layout = {
+    title: titleConfig(buildChart1Title(meta, chosenOrchestras, chosenYears)),
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
-    margin: { t: 20, r: 24, l: 64, b: 44 },
+    margin: { t: CHART_MARGIN_T_WITH_TITLE, r: 24, l: 64, b: 44 },
     xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1, showspikes:true, spikemode:"across", spikethickness:1, spikedash:"dot", spikecolor:"#999" },
     yaxis: { title: axisLabel(meta, unit), gridcolor: "#eeece6", zeroline:false, tickformat: ",.0f", separatethousands:true },
     legend: { orientation: "h", y: -0.2 },
     hovermode: "x"
   };
-  document.getElementById("chart1").innerHTML = "";
+  const chart1El = document.getElementById("chart1");
+  chart1El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
+  chart1El.innerHTML = "";
   Plotly.newPlot("chart1", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
   attachSortedHover("chart1");
 }
@@ -586,9 +687,10 @@ function renderChart2(){
   let traces = [];
   let needsCustomHover = false;
   let layout = {
+    title: titleConfig(buildChart2Title(metaA, metaB, mode, chosenOrchestras, years)),
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
-    margin: { t: 20, r: 64, l: 64, b: 44 },
+    margin: { t: CHART_MARGIN_T_WITH_TITLE, r: 64, l: 64, b: 44 },
     xaxis: { title: "Év", gridcolor: "#eeece6", tickmode:"linear", dtick:1, showspikes:true, spikemode:"across", spikethickness:1, spikedash:"dot", spikecolor:"#999" },
     legend: { orientation: "h", y: -0.2 }, hovermode: "x unified"
   };
@@ -816,7 +918,9 @@ function renderChart2(){
     }
   }
 
-  document.getElementById("chart2").innerHTML = "";
+  const chart2El = document.getElementById("chart2");
+  chart2El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
+  chart2El.innerHTML = "";
   Plotly.newPlot("chart2", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
   if(needsCustomHover) attachSortedHover("chart2");
 }
