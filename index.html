@@ -101,6 +101,15 @@
   .mode-row label{ display:flex; align-items:center; gap:6px; cursor:pointer; color: var(--ink-soft); }
   .mode-row input{ accent-color: var(--accent); }
 
+  .pc-row{
+    display:flex; flex-wrap: wrap; gap: 16px; align-items:center; margin: -6px 0 18px;
+    font-family:"Helvetica Neue", Arial, sans-serif; font-size: 12.5px; color: var(--ink-soft);
+  }
+  .pc-row-label{ font-weight: 700; color: var(--ink); }
+  .pc-row label{ display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .pc-row input{ accent-color: var(--accent); }
+  .pc-row.disabled{ opacity: 0.4; pointer-events: none; }
+
   .unit-warning{
     font-family:"Helvetica Neue", Arial, sans-serif; font-size: 12px;
     background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-ink);
@@ -167,6 +176,11 @@
         <select id="indicator-select-1" disabled></select>
       </div>
     </div>
+    <div class="pc-row" id="pc-row-1">
+      <span class="pc-row-label">Mértéke:</span>
+      <label><input type="radio" name="pcmode1" value="abs" checked> Abszolút érték</label>
+      <label><input type="radio" name="pcmode1" value="pc"> Egy főre vetítve (fő)</label>
+    </div>
     <div id="chart1" class="chart"><div class="empty-msg">Tölts fel egy zenekarok.csv fájlt a fenti mezővel.</div></div>
   </section>
 
@@ -191,6 +205,11 @@
         <select id="baseyear-select"></select>
         <div class="hint">Kiválasztható közös bázisév a divergenciához</div>
       </div>
+    </div>
+    <div class="pc-row" id="pc-row-2">
+      <span class="pc-row-label">Zenekari mutató mértéke:</span>
+      <label><input type="radio" name="pcmode2" value="abs" checked> Abszolút érték</label>
+      <label><input type="radio" name="pcmode2" value="pc"> Egy főre vetítve (fő)</label>
     </div>
     <div class="mode-row">
       <label><input type="radio" name="mode2" value="dual" checked disabled> Kettős tengelyes összevetés (Összegzett)</label>
@@ -280,9 +299,25 @@ const ALTALANOS_META = {
   atlag_ber: { label: "Bruttó átlagkereset",                        unitClass: "wage",  perSuffix: "/hó", toFt: v => v }
 };
 
+const PC_SUFFIX = "__pc";
+
 function metaFor(key, isZenekar){
+  if(key && key.endsWith(PC_SUFFIX)){
+    const baseKey = key.slice(0, -PC_SUFFIX.length);
+    const baseMeta = metaFor(baseKey, isZenekar);
+    return {
+      label: baseMeta.label,
+      unitClass: baseMeta.unitClass,
+      perSuffix: "/fő",
+      toFt: baseMeta.toFt
+    };
+  }
   const dict = isZenekar ? ZENEKAR_META : ALTALANOS_META;
   return dict[key] || { label: key, unitClass: "unknown", toFt: v => v };
+}
+
+function supportsPerCapita(key, isZenekar){
+  return metaFor(key, isZenekar).unitClass === "money";
 }
 
 /* ---------------------------------------------------------------------
@@ -338,10 +373,10 @@ function yearRangeLabel(years){
   return first === last ? `${first}` : `${first}–${last}`;
 }
 
-function buildChart1Title(meta, chosenOrchestras, chosenYears){
+function buildChart1Title(meta, chosenOrchestras, chosenYears, isPerCapita){
   const yearPart = yearRangeLabel(chosenYears);
   const orchPart = chosenOrchestras.length ? chosenOrchestras.join(", ") : "";
-  let title = meta.label;
+  let title = meta.label + (isPerCapita ? " (egy főre vetítve)" : "");
   if(orchPart) title += ` — ${orchPart}`;
   if(yearPart) title += ` (${yearPart})`;
   return title;
@@ -355,10 +390,11 @@ const MODE_LABELS_HU = {
   ratio_percent: "arány, 100%-ra halmozott oszlop"
 };
 
-function buildChart2Title(metaA, metaB, mode, chosenOrchestras, years){
+function buildChart2Title(metaA, metaB, mode, chosenOrchestras, years, isPerCapitaA){
   const yearPart = yearRangeLabel(years);
   const orchPart = chosenOrchestras.length ? chosenOrchestras.join(", ") : "";
-  let title = `${metaA.label} vs. ${metaB.label} — ${MODE_LABELS_HU[mode] || mode}`;
+  const aLabel = metaA.label + (isPerCapitaA ? " (egy főre vetítve)" : "");
+  let title = `${aLabel} vs. ${metaB.label} — ${MODE_LABELS_HU[mode] || mode}`;
   if(orchPart) title += ` (${orchPart})`;
   if(yearPart) title += `, ${yearPart}`;
   return title;
@@ -406,23 +442,17 @@ function getClientXY(evt, fallbackEl){
   return { x: 20, y: 20 };
 }
 
-function showSortedTooltip(evt, gd){
-  if(!evt.points || !evt.points.length) return;
-  const xVal = evt.points[0].x;
-  const rows = evt.points
-    .filter(p => p.data && p.data.type === "scatter")
-    .map(p => ({
-      name: p.data.name,
-      y: p.y,
-      color: (p.data.line && p.data.line.color) || "#ccc",
-      suffix: p.data._unitSuffix || "",
-      decimals: (p.data._decimals !== undefined) ? p.data._decimals : 0
-    }))
-    .filter(r => r.y !== null && r.y !== undefined)
-    .sort((a,b) => b.y - a.y);
+// Az egyes grafikonok jelenleg megjelenített trace-adatait (x/y tömbök,
+// mértékegység-szuffixum) itt tároljuk el, hogy érintésre saját magunk
+// tudjuk kikeresni a legközelebbi év adatait — nem a Plotly beépített
+// hover/click eseményére támaszkodva, mert az mobilon (Chrome/Firefox/
+// Opera, több eszközön tesztelve) nem indítja el megbízhatóan a
+// tooltipet, csak a szaggatott segédvonalat rajzolja ki.
+const chartTracesRef = {};
 
+function renderTooltipHTML(rows, xVal, pos){
   if(!rows.length){ globalTooltip.style.display = "none"; return; }
-
+  debugLog(`tooltip megjelenítve, ${rows.length} sor, x=${xVal}`);
   let html = `<div style="font-weight:700;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:5px;">${xVal}</div>`;
   rows.forEach(r => {
     html += `<div style="display:flex;align-items:center;gap:7px;margin-top:3px;">` +
@@ -432,7 +462,6 @@ function showSortedTooltip(evt, gd){
   globalTooltip.innerHTML = html;
   globalTooltip.style.display = "block";
 
-  const pos = getClientXY(evt, gd);
   const estWidth = 240;
   let left = pos.x + 18;
   let top = pos.y - 24;
@@ -444,29 +473,160 @@ function showSortedTooltip(evt, gd){
   globalTooltip.style.top = top + "px";
 }
 
-function attachSortedHover(containerId){
-  const gd = document.getElementById(containerId);
-  if(!gd || typeof gd.on !== "function") return;
+function rowsFromPlotlyPoints(points){
+  return points
+    .filter(p => p.data && p.data.type === "scatter")
+    .map(p => ({
+      name: p.data.name,
+      y: p.y,
+      color: (p.data.line && p.data.line.color) || "#ccc",
+      suffix: p.data._unitSuffix || "",
+      decimals: (p.data._decimals !== undefined) ? p.data._decimals : 0
+    }))
+    .filter(r => r.y !== null && r.y !== undefined)
+    .sort((a,b) => b.y - a.y);
+}
 
-  // Egér: hover (asztali böngészők)
-  gd.on("plotly_hover", function(evt){ showSortedTooltip(evt, gd); });
-  gd.on("plotly_unhover", function(){ globalTooltip.style.display = "none"; });
+function rowsForYear(containerId, year){
+  const traces = chartTracesRef[containerId] || [];
+  return traces
+    .filter(t => t.type === "scatter")
+    .map(t => {
+      const idx = t.x.indexOf(year);
+      if(idx === -1) return null;
+      const y = t.y[idx];
+      if(y === null || y === undefined) return null;
+      return {
+        name: t.name, y,
+        color: (t.line && t.line.color) || "#ccc",
+        suffix: t._unitSuffix || "",
+        decimals: (t._decimals !== undefined) ? t._decimals : 0
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b) => b.y - a.y);
+}
 
-  // Érintőképernyő: koppintásra jelenik meg (a hover eseményt sok mobil
-  // böngésző nem váltja ki érintésre, de a click/tap eseményt igen).
-  gd.on("plotly_click", function(evt){ showSortedTooltip(evt, gd); });
+// Pixel → adat (év) konverzió a Plotly belső tengelyobjektumai alapján.
+function nearestYearFromClientX(gd, clientX){
+  try{
+    const fl = gd._fullLayout;
+    if(!fl || !fl.xaxis || !fl._size) return null;
+    const rect = gd.getBoundingClientRect();
+    const px = clientX - rect.left - fl._size.l;
+    const dataX = fl.xaxis.p2d(px);
+    return Math.round(dataX);
+  } catch(err){
+    return null;
+  }
+}
 
-  // Máshova koppintva/kattintva tűnjön el a tooltip.
+const attachedContainers = {};
+
+function debugLog(){ /* no-op — a diagnosztikai sáv eltávolítva */ }
+
+function isPointInsideEl(clientX, clientY, el){
+  const r = el.getBoundingClientRect();
+  return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+}
+
+function isPointInsideAnyChart(clientX, clientY){
+  return Object.keys(attachedContainers).some(id => {
+    const el = document.getElementById(id);
+    return el && isPointInsideEl(clientX, clientY, el);
+  });
+}
+
+// Egyetlen globális figyelő dönti el, hogy a máshova koppintás/kattintás
+// elrejtse-e a tooltipet — geometriai (koordináta alapú) ellenőrzéssel,
+// NEM a `.contains(e.target)`-tel.
+//
+// A debug-napló megmutatta a valódi okot: mobilon egy koppintás után
+// kb. 20-300 ms-mal egy szintetikus "click" esemény is érkezik ugyanoda.
+// Emiatt a mi saját touch-kezelőnk megjelenítette a tooltipet, majd a
+// közvetlenül utána befutó szintetikus click a "kívülre kattintás"
+// logikánk miatt AZONNAL el is rejtette. Ezért a `click`-alapú elrejtést
+// letiltjuk egy rövid ideig minden valódi (touch) érintés után — a
+// "kívülre koppintás" esetet már úgyis a touchstart-figyelő lekezeli.
+let lastAnyChartTouchTime = 0;
+let outsideDismissAttached = false;
+function ensureOutsideDismiss(){
+  if(outsideDismissAttached) return;
+  outsideDismissAttached = true;
   document.addEventListener("touchstart", function(e){
-    if(globalTooltip.style.display === "block" && !gd.contains(e.target)){
+    if(globalTooltip.style.display !== "block") return;
+    const t = e.touches && e.touches[0];
+    if(!t) return;
+    if(!isPointInsideAnyChart(t.clientX, t.clientY)){
+      debugLog("touchstart kívül -> rejtés");
       globalTooltip.style.display = "none";
     }
   }, { passive: true });
   document.addEventListener("click", function(e){
-    if(globalTooltip.style.display === "block" && !gd.contains(e.target)){
+    if(globalTooltip.style.display !== "block") return;
+    if(Date.now() - lastAnyChartTouchTime < 900){
+      debugLog("click figyelmen kívül hagyva (nemrég volt érintés)");
+      return;
+    }
+    if(!isPointInsideAnyChart(e.clientX, e.clientY)){
+      debugLog("click kívül -> rejtés");
       globalTooltip.style.display = "none";
     }
   });
+}
+
+function attachSortedHover(containerId){
+  const gd = document.getElementById(containerId);
+  if(!gd) return;
+  attachedContainers[containerId] = true;
+  ensureOutsideDismiss();
+
+  function markTouch(){ lastAnyChartTouchTime = Date.now(); }
+
+  // Egér: natív Plotly hover (asztali böngészők). FONTOS: a Plotly.newPlot
+  // minden újrarajzoláskor egy friss belső eseménykezelőt hoz létre, ezért
+  // ezt a feliratkozást MINDEN renderelés után újra el kell végezni —
+  // ellentétben a lentebbi natív DOM touch-figyelőkkel, amik magán a
+  // `gd` elemen maradnak, azt a Plotly nem cseréli le újrarajzoláskor.
+  if(typeof gd.on === "function"){
+    gd.on("plotly_hover", function(evt){
+      if(!evt.points || !evt.points.length) return;
+      const rows = rowsFromPlotlyPoints(evt.points);
+      const pos = getClientXY(evt, gd);
+      renderTooltipHTML(rows, evt.points[0].x, pos);
+    });
+    gd.on("plotly_unhover", function(){
+      if(Date.now() - lastAnyChartTouchTime < 900) return;
+      globalTooltip.style.display = "none";
+    });
+  }
+
+  // A DOM-szintű érintés-figyelőket csak egyszer kötjük fel elemenként,
+  // hogy újrarajzoláskor (szűrő-/mutatóváltás) ne halmozódjanak fel
+  // duplikált eseménykezelők.
+  if(gd.dataset.touchHoverAttached === "1") return;
+  gd.dataset.touchHoverAttached = "1";
+
+  // Érintőképernyő: saját kezűleg számoljuk ki, melyik évhez tartozik
+  // az érintés pozíciója (nem a Plotly touch→hover fordítására
+  // támaszkodva), és a `chartTracesRef`-ben tárolt friss adatokból
+  // építjük fel a tooltipet.
+  function handleTouch(e){
+    markTouch();
+    if(!e.touches || !e.touches.length) return;
+    const touch = e.touches[0];
+    const year = nearestYearFromClientX(gd, touch.clientX);
+    debugLog(`${containerId} touch x=${Math.round(touch.clientX)} -> év=${year}`);
+    if(year === null || isNaN(year)) return;
+    const rows = rowsForYear(containerId, year);
+    debugLog(`${containerId} év=${year} rows=${rows.length}`);
+    if(!rows.length) return;
+    renderTooltipHTML(rows, year, { x: touch.clientX, y: touch.clientY });
+  }
+  gd.addEventListener("touchstart", handleTouch, { passive: true });
+  gd.addEventListener("touchmove", handleTouch, { passive: true });
+  gd.addEventListener("touchend", markTouch, { passive: true });
+  gd.addEventListener("touchcancel", markTouch, { passive: true });
 }
 
 /* ---------------------------------------------------------------------
@@ -495,11 +655,39 @@ const baseYearSel = document.getElementById("baseyear-select");
 const baseYearField = document.getElementById("baseyear-field");
 const modeRadios = document.querySelectorAll('input[name="mode2"]');
 const unitWarning = document.getElementById("unit-warning");
+const pcRow1 = document.getElementById("pc-row-1");
+const pcRow2 = document.getElementById("pc-row-2");
+const pcRadios1 = document.querySelectorAll('input[name="pcmode1"]');
+const pcRadios2 = document.querySelectorAll('input[name="pcmode2"]');
 
 function getSelectedValues(sel){ return Array.from(sel.selectedOptions).map(o => o.value); }
 function setStatus(id, state, text){
   const el = document.getElementById(id); el.className = "status " + state;
   el.querySelector("span:last-child").textContent = text;
+}
+
+function getRadioValue(radios){
+  const checked = Array.from(radios).find(r => r.checked);
+  return checked ? checked.value : "abs";
+}
+
+// A rádiógomb-sor letiltása (és "Abszolút"-ra visszaállítása), ha a
+// jelenleg kiválasztott mutatóhoz nincs egy főre eső változat
+// (pl. darabszámok, index-jellegű mutatók).
+function updatePcRowState(rowEl, radios, baseKey, isZenekar){
+  const ok = supportsPerCapita(baseKey, isZenekar);
+  rowEl.classList.toggle("disabled", !ok);
+  if(!ok){
+    const absRadio = Array.from(radios).find(r => r.value === "abs");
+    if(absRadio) absRadio.checked = true;
+  }
+}
+
+// A ténylegesen megjelenítendő kulcsot adja vissza: ha az "egy főre
+// vetítve" mód aktív és a mutató támogatja, a "__pc" változatot.
+function effectiveIndicatorKey(baseKey, pcMode, isZenekar){
+  if(pcMode === "pc" && supportsPerCapita(baseKey, isZenekar)) return baseKey + PC_SUFFIX;
+  return baseKey;
 }
 
 function ingestZenekarokCSV(text){
@@ -514,6 +702,24 @@ function ingestZenekarokCSV(text){
       });
       return out;
     });
+
+    // Egy főre eső (létszámra vetített) változatok legenerálása minden
+    // pénzösszeg-jellegű mutatóhoz. Ezek nem jelennek meg külön tételként
+    // a mutató-listában — helyette egy rádiógombbal kapcsolható az
+    // abszolút és az egy főre vetített nézet között.
+    if(zenekarIndicatorKeys.includes("letszam")){
+      zenekarokData.forEach(row => {
+        zenekarIndicatorKeys.forEach(h => {
+          if(!supportsPerCapita(h, true)) return;
+          const val = row[h];
+          const staff = row.letszam;
+          row[h + PC_SUFFIX] = (val !== null && val !== undefined && staff !== null && staff !== undefined && staff > 0)
+            ? val / staff
+            : null;
+        });
+      });
+    }
+
     orchestraNames = [...new Set(zenekarokData.map(d => d.zenekar))].sort();
     allYears = [...new Set(zenekarokData.map(d => d.ev))].sort((a,b) => a-b);
 
@@ -569,7 +775,8 @@ function updateBaseYearDropdown(){
   if(!zenekarokData || !altalanosData) return;
 
   const chosenOrchestras = getSelectedValues(orchSel2);
-  const indA = indSel2a.value;
+  updatePcRowState(pcRow2, pcRadios2, indSel2a.value, true);
+  const indA = effectiveIndicatorKey(indSel2a.value, getRadioValue(pcRadios2), true);
   const indB = indSel2b.value;
 
   const altalanosYears = altalanosData.filter(d => d[indB] !== null && d[indB] !== undefined).map(d => d.ev);
@@ -600,7 +807,10 @@ function renderChart1(){
   const chosenOrchestras = getSelectedValues(orchSel1);
   const chosenYearsRaw = getSelectedValues(yearSel1).map(Number);
   const chosenYears = chosenYearsRaw.length ? chosenYearsRaw : allYears;
-  const indicator = indSel1.value;
+  const baseIndicator = indSel1.value;
+  updatePcRowState(pcRow1, pcRadios1, baseIndicator, true);
+  const pcMode1 = getRadioValue(pcRadios1);
+  const indicator = effectiveIndicatorKey(baseIndicator, pcMode1, true);
   const meta = metaFor(indicator, true);
 
   const visibleRawValues = zenekarokData
@@ -632,7 +842,7 @@ function renderChart1(){
   });
 
   const layout = {
-    title: titleConfig(buildChart1Title(meta, chosenOrchestras, chosenYears)),
+    title: titleConfig(buildChart1Title(meta, chosenOrchestras, chosenYears, pcMode1 === "pc" && supportsPerCapita(baseIndicator, true))),
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
     margin: { t: CHART_MARGIN_T_WITH_TITLE, r: 24, l: 64, b: 44 },
@@ -644,6 +854,7 @@ function renderChart1(){
   const chart1El = document.getElementById("chart1");
   chart1El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
   chart1El.innerHTML = "";
+  chartTracesRef["chart1"] = traces;
   Plotly.newPlot("chart1", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
   attachSortedHover("chart1");
 }
@@ -654,7 +865,10 @@ function renderChart1(){
 function renderChart2(){
   if(!zenekarokData || !altalanosData) return;
   let chosenOrchestras = getSelectedValues(orchSel2);
-  const indA = indSel2a.value;
+  updatePcRowState(pcRow2, pcRadios2, indSel2a.value, true);
+  const pcMode2 = getRadioValue(pcRadios2);
+  const isPerCapitaA = pcMode2 === "pc" && supportsPerCapita(indSel2a.value, true);
+  const indA = effectiveIndicatorKey(indSel2a.value, pcMode2, true);
   const indB = indSel2b.value;
   const mode = document.querySelector('input[name="mode2"]:checked').value;
 
@@ -687,7 +901,7 @@ function renderChart2(){
   let traces = [];
   let needsCustomHover = false;
   let layout = {
-    title: titleConfig(buildChart2Title(metaA, metaB, mode, chosenOrchestras, years)),
+    title: titleConfig(buildChart2Title(metaA, metaB, mode, chosenOrchestras, years, isPerCapitaA)),
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Helvetica Neue, Arial, sans-serif", color: "#1e2530", size: 12.5 },
     margin: { t: CHART_MARGIN_T_WITH_TITLE, r: 64, l: 64, b: 44 },
@@ -921,6 +1135,7 @@ function renderChart2(){
   const chart2El = document.getElementById("chart2");
   chart2El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
   chart2El.innerHTML = "";
+  chartTracesRef["chart2"] = traces;
   Plotly.newPlot("chart2", traces, layout, {responsive:true, displaylogo:false, separators: ", "});
   if(needsCustomHover) attachSortedHover("chart2");
 }
@@ -929,8 +1144,13 @@ function renderChart2(){
    7. ESEMÉNYEK REGISZTRÁCIÓJA & INIT
    --------------------------------------------------------------------- */
 [orchSel1, yearSel1, indSel1].forEach(el => el.addEventListener("change", renderChart1));
+pcRadios1.forEach(r => r.addEventListener("change", renderChart1));
 
 [orchSel2, indSel2a, indSel2b].forEach(el => el.addEventListener("change", () => {
+  updateBaseYearDropdown();
+  renderChart2();
+}));
+pcRadios2.forEach(r => r.addEventListener("change", () => {
   updateBaseYearDropdown();
   renderChart2();
 }));
