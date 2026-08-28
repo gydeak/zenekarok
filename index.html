@@ -155,7 +155,7 @@
   <header>
     <p class="eyebrow">Kulturális finanszírozás &nbsp;·&nbsp; Magyarország</p>
     <h1>Zenekarok és kórusok adatvizualizációja</h1>
-    <p class="sub">Zenekari és kórus pénzügyi és statisztikai adatok éves bontásban, összevetve a nemzetgazdasági és kulturális kiadási kontextussal.</p>
+    <p class="sub">Zenekari és kórus pénzügyi és statisztikai adatok éves bontásban, összevetve a nemzetgazdasági és kulturális kiadási kontextussal. Az adatok a saját CSV fájljaidból töltődnek be.</p>
   </header>
 
   <div class="entity-tabs">
@@ -196,7 +196,7 @@
         <div class="field">
           <label for="year-select-1-zene">Év(ek)</label>
           <select id="year-select-1-zene" multiple disabled></select>
-          <div class="hint">Üresen hagyva: minden elérhető év. Ctrl/Cmd + kattintás a többes kijelöléshez</div>
+          <div class="hint">Üresen hagyva: minden elérhető év</div>
         </div>
         <div class="field">
           <label for="indicator-select-1-zene">Mutató</label>
@@ -394,6 +394,8 @@ const ENTITY_META = {
   latogato_kulfold:    { label: "Külföldi látogatók száma",             unitClass: "count", toFt: v => v },
   kozpenz:             { label: "Közpénz-támogatás",                    unitClass: "money", toFt: v => v * 1000 },
   sajat_bevetel:       { label: "Saját bevétel",                        unitClass: "money", toFt: v => v * 1000 },
+  belfoldi_bevetel:    { label: "Belföldi bevétel",                     unitClass: "money", toFt: v => v * 1000 },
+  kulfoldi_bevetel:    { label: "Külföldi bevétel",                     unitClass: "money", toFt: v => v * 1000 },
   szemelyi_jellegu:    { label: "Személyi jellegű ráfordítás",          unitClass: "money", toFt: v => v * 1000 },
   berkotseg:           { label: "Bérköltség",                           unitClass: "money", toFt: v => v * 1000 },
   szem_egyeb:          { label: "Egyéb személyi jellegű kifizetés",     unitClass: "money", toFt: v => v * 1000 },
