@@ -396,8 +396,12 @@ function toNumber(str){
 const ENTITY_META = {
   bevetel:            { label: "Bevétel",                              unitClass: "money", toFt: v => v * 1000 },
   kiadas:              { label: "Kiadás",                               unitClass: "money", toFt: v => v * 1000 },
+  koncertek:           { label: "Koncertek száma (összesen)",           unitClass: "count", toFt: v => v },
+  koncert:             { label: "Koncertek száma (csak összesített adat)", unitClass: "count", toFt: v => v },
   koncert_belfold:     { label: "Belföldi koncertek száma",             unitClass: "count", toFt: v => v },
   koncert_kulfold:     { label: "Külföldi koncertek száma",             unitClass: "count", toFt: v => v },
+  latogatok:           { label: "Látogatók száma (összesen)",           unitClass: "count", toFt: v => v },
+  latogato:            { label: "Látogatók száma (csak összesített adat)", unitClass: "count", toFt: v => v },
   latogato_belfold:    { label: "Belföldi látogatók száma",             unitClass: "count", toFt: v => v },
   latogato_kulfold:    { label: "Külföldi látogatók száma",             unitClass: "count", toFt: v => v },
   kozpenz:             { label: "Közpénz-támogatás",                    unitClass: "money", toFt: v => v * 1000 },
