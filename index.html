@@ -580,6 +580,46 @@ function getClientXY(evt, fallbackEl){
 // tooltipet, csak a szaggatott segédvonalat rajzolja ki.
 const chartTracesRef = {};
 
+/* ---------------------------------------------------------------------
+   UNIVERZÁLIS TIZEDESJEGY-LOGIKA A TOOLTIPHEZ
+   A grafikonon ténylegesen megjelenített adatsorok értékeit megvizsgálja,
+   és annyi tizedesjegyet választ, hogy a LEGKISEBB (nem nulla) abszolút
+   értéknél is látszódjon legalább `minSig` (2) értékes (nem 0) számjegy.
+   Példa: legkisebb érték 0,00081 -> 5 tizedesjegy (0,00081);
+          legkisebb érték 0,0032  -> 4 tizedesjegy (0,0032);
+          legkisebb érték 45,7    -> 0 tizedesjegy (a trace eredeti
+          _decimals értéke marad alsó korlát).
+   - Az y-tengelyenként (y / y2) külön számol, így a kéttengelyes
+     nézetben a két skála nem szennyezi egymást.
+   - Ha az adott csoport minden értéke egész szám (pl. koncertek száma,
+     létszám), nem ad hozzá tizedesjegyet.
+   - A tooltipben minden sor ugyanannyi tizedesjeggyel jelenik meg, és
+     ez nem ugrál egyik évről a másikra, mert a teljes adatsorból számol.
+   --------------------------------------------------------------------- */
+function applyAutoDecimals(traces, minSig = 2, maxDecimals = 10){
+  const groups = {};
+  traces.forEach(t => {
+    if(t.type !== "scatter" || !t.y) return;
+    (groups[t.yaxis || "y"] = groups[t.yaxis || "y"] || []).push(t);
+  });
+  Object.values(groups).forEach(group => {
+    const vals = [];
+    group.forEach(t => t.y.forEach(v => {
+      if(typeof v === "number" && isFinite(v) && v !== 0) vals.push(Math.abs(v));
+    }));
+    if(!vals.length) return;
+    const allInt = vals.every(v => Math.abs(v - Math.round(v)) < 1e-9);
+    if(allInt) return;
+    const minAbs = Math.min(...vals);
+    // A legkisebb érték első értékes számjegyének helyiértéke (pl. 0,0008 -> -4)
+    const exp = Math.floor(Math.log10(minAbs) + 1e-12);
+    const needed = Math.min(maxDecimals, Math.max(0, minSig - 1 - exp));
+    group.forEach(t => { t._decimals = Math.max(t._decimals || 0, needed); });
+  });
+  return traces;
+}
+
+
 function debugLog(){ /* no-op — a diagnosztikai sáv eltávolítva */ }
 
 function renderTooltipHTML(rows, xVal, pos){
@@ -979,6 +1019,7 @@ function createEntityApp(cfg){
     const chart1El = document.getElementById(chart1Id);
     chart1El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
     chart1El.innerHTML = "";
+    applyAutoDecimals(traces);
     chartTracesRef[chart1Id] = traces;
     Plotly.newPlot(chart1Id, traces, layout, {responsive:true, displaylogo:false, separators: ", "});
     attachSortedHover(chart1Id);
@@ -1260,6 +1301,7 @@ function createEntityApp(cfg){
     const chart2El = document.getElementById(chart2Id);
     chart2El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
     chart2El.innerHTML = "";
+    applyAutoDecimals(traces);
     chartTracesRef[chart2Id] = traces;
     Plotly.newPlot(chart2Id, traces, layout, {responsive:true, displaylogo:false, separators: ", "});
     if(needsCustomHover) attachSortedHover(chart2Id);
