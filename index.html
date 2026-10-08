@@ -400,10 +400,28 @@ const ENTITY_META = {
   koncert:             { label: "Koncertek száma (csak összesített adat)", unitClass: "count", toFt: v => v },
   koncert_belfold:     { label: "Belföldi koncertek száma",             unitClass: "count", toFt: v => v },
   koncert_kulfold:     { label: "Külföldi koncertek száma",             unitClass: "count", toFt: v => v },
+  koncert_belfold_kultstat: { label: "Belföldi koncertek száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_kulfold_kultstat: { label: "Külföldi koncertek száma (KultStat)", unitClass: "count", toFt: v => v },
   latogatok:           { label: "Látogatók száma (összesen)",           unitClass: "count", toFt: v => v },
   latogato:            { label: "Látogatók száma (csak összesített adat)", unitClass: "count", toFt: v => v },
   latogato_belfold:    { label: "Belföldi látogatók száma",             unitClass: "count", toFt: v => v },
   latogato_kulfold:    { label: "Külföldi látogatók száma",             unitClass: "count", toFt: v => v },
+  latogato_belfold_kultstat: { label: "Belföldi látogatók száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_kulfold_kultstat: { label: "Külföldi látogatók száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_oratorium_kultstat: { label: "Oratórium hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_oratorium_kultstat: { label: "Oratórium hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_zenekari_kultstat: { label: "Zenekari hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_zenekari_kultstat: { label: "Zenekari hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_enekkari_kultstat: { label: "Énekkari hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_enekkari_kultstat: { label: "Énekkari hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_kamarazene_kultstat: { label: "Kamarazenei hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_kamarazene_kultstat: { label: "Kamarazenei hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_hangszerszolo_kultstat: { label: "Hangszerszóló hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_hangszerszolo_kultstat: { label: "Hangszerszóló hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_vegyes_kultstat: { label: "Vegyes hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_vegyes_kultstat: { label: "Vegyes hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
+  koncert_ifjusagi_kultstat: { label: "Ifjúsági hangversenyek száma (KultStat)", unitClass: "count", toFt: v => v },
+  latogato_ifjusagi_kultstat: { label: "Ifjúsági hangversenyek látogatóinak száma (KultStat)", unitClass: "count", toFt: v => v },
   kozpenz:             { label: "Közpénz-támogatás",                    unitClass: "money", toFt: v => v * 1000 },
   sajat_bevetel:       { label: "Saját bevétel",                        unitClass: "money", toFt: v => v * 1000 },
   belfoldi_bevetel:    { label: "Belföldi bevétel",                     unitClass: "money", toFt: v => v * 1000 },
@@ -414,6 +432,9 @@ const ENTITY_META = {
   szem_egyeb:          { label: "Egyéb személyi jellegű ráfordítás",     unitClass: "money", toFt: v => v * 1000 },
   berjarulek:          { label: "Bérjárulék",                           unitClass: "money", toFt: v => v * 1000 },
   letszam:             { label: "Létszám (fő)",                         unitClass: "count", toFt: v => v },
+  letszam_kultstat:    { label: "Létszám (fő, KultStat)", unitClass: "count", toFt: v => v },
+  letszam_muvesz_kultstat: { label: "Művészeti létszám (fő, KultStat)", unitClass: "count", toFt: v => v },
+  letszam_menedzsment_kultstat: { label: "Menedzsment létszám (fő, KultStat)", unitClass: "count", toFt: v => v },
   anyagjellegu:        { label: "Anyagjellegű ráfordítás",              unitClass: "money", toFt: v => v * 1000 },
   egy_fore_szemelyi:   { label: "Egy főre jutó személyi költség",       unitClass: "wage",  perSuffix: "/hó", toFt: v => v * 1000 }
 };
@@ -579,6 +600,22 @@ function getClientXY(evt, fallbackEl){
 // Opera, több eszközön tesztelve) nem indítja el megbízhatóan a
 // tooltipet, csak a szaggatott segédvonalat rajzolja ki.
 const chartTracesRef = {};
+
+/* ---------------------------------------------------------------------
+   NAGY FELBONTÁSÚ EXPORT
+   A Plotly kamera-gombja alapból a képernyőn látható méretben (kb.
+   1000x500 px) menti a PNG-t. Az EXPORT_SCALE szorzóval ennek többszörösét
+   kapjuk (3 -> kb. 3000x1500 px), ami prezentációba és nyomtatásba is
+   elegendő. A méretezés a vektoros rajzból történik, így nem elmosódott.
+   A szorzó átírásával a felbontás egy helyen módosítható.
+   --------------------------------------------------------------------- */
+const EXPORT_SCALE = 3;
+function plotlyConfig(filename){
+  return {
+    responsive: true, displaylogo: false, separators: ", ",
+    toImageButtonOptions: { format: "png", filename: filename, scale: EXPORT_SCALE }
+  };
+}
 
 /* ---------------------------------------------------------------------
    UNIVERZÁLIS TIZEDESJEGY-LOGIKA A TOOLTIPHEZ
@@ -1021,7 +1058,7 @@ function createEntityApp(cfg){
     chart1El.innerHTML = "";
     applyAutoDecimals(traces);
     chartTracesRef[chart1Id] = traces;
-    Plotly.newPlot(chart1Id, traces, layout, {responsive:true, displaylogo:false, separators: ", "});
+    Plotly.newPlot(chart1Id, traces, layout, plotlyConfig("zenekarok_grafikon1"));
     attachSortedHover(chart1Id);
   }
 
@@ -1303,7 +1340,7 @@ function createEntityApp(cfg){
     chart2El.innerHTML = "";
     applyAutoDecimals(traces);
     chartTracesRef[chart2Id] = traces;
-    Plotly.newPlot(chart2Id, traces, layout, {responsive:true, displaylogo:false, separators: ", "});
+    Plotly.newPlot(chart2Id, traces, layout, plotlyConfig("zenekarok_grafikon2"));
     if(needsCustomHover) attachSortedHover(chart2Id);
   }
 
