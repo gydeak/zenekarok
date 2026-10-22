@@ -1085,7 +1085,9 @@ function createEntityApp(cfg){
       el.baseYearField.classList.remove("show");
     }
 
-    el.unitWarning.classList.toggle("show", mode !== "dual" && mode !== "divergence" && !bothComparable);
+    // Az arány a kettős tengelyes nézethez hasonlóan bázisévre illesztett vetítéssel készül,
+    // ezért mértékegység-eltérés esetén sem félrevezető: nincs figyelmeztetés.
+    el.unitWarning.classList.remove("show");
 
     const altalanosByYear = {};
     altData.forEach(d => { altalanosByYear[d.ev] = d[indB]; });
@@ -1263,17 +1265,37 @@ function createEntityApp(cfg){
       needsCustomHover = true;
 
     } else {
-      layout.yaxis = { title: "Arány (%)", gridcolor: "#eeece6", zeroline:false };
+      const asDeviation = (mode !== "ratio_percent");
+      layout.yaxis = asDeviation
+        ? { title: `Eltérés a vetített ${metaB.label}-től (%, bázis: első közös év = 0)`,
+            gridcolor: "#eeece6", zeroline:true, zerolinecolor:"#999", zerolinewidth:1.5, ticksuffix:"%" }
+        : { title: `Arány (%) — ${metaB.label} a bal tengelyre vetítve (bázis: első közös év)`,
+            gridcolor: "#eeece6", zeroline:false };
 
+      // Ugyanaz a vetítés, mint a kettős tengelyes nézetben: az országos mutatót az első közös
+      // (bázis)évben a zenekari mutató értékére illesztjük (b1/b2 szorzóval), majd a zenekari
+      // érték és a vetített országos érték %-os arányát mutatjuk. A bázisévben ez 100%.
       let entityObjects = chosenEntities.map((name) => {
-        const ratios = years.map(y => {
+        const vals = years.map(y => {
           const row = es.data.find(d => d.entity === name && d.ev === y);
-          if(!row || row[indA] === null || row[indA] === undefined) return null;
-          const valA = row[indA];
-          const valB = altalanosByYear[y];
-          return valB ? (valA / valB) * 100 : null;
+          return (row && row[indA] !== null && row[indA] !== undefined) ? row[indA] : null;
         });
-        return { name: name, ratios: ratios, color: es.colors[name] };
+        let baseIdx = -1;
+        for(let i = 0; i < years.length; i++){
+          const a = vals[i], b = altalanosByYear[years[i]];
+          if(a !== null && a > 0 && b !== null && b !== undefined && b > 0){ baseIdx = i; break; }
+        }
+        const ratios = years.map((y, i) => {
+          if(baseIdx === -1 || vals[i] === null) return null;
+          const valB = altalanosByYear[y];
+          if(valB === null || valB === undefined || valB <= 0) return null;
+          const projectedB = valB * (vals[baseIdx] / altalanosByYear[years[baseIdx]]);
+          return (vals[i] / projectedB) * 100;
+        });
+        // Idősor és halmozott oszlop: az eltérés a bázishoz képest (bázisév = 0, + / − elmozdulás).
+        // A 100%-ra halmozott nézethez az eredeti arány kell (negatív érték nem értelmezhető részesedésként).
+        const finalRatios = asDeviation ? ratios.map(r => r === null ? null : r - 100) : ratios;
+        return { name: name, ratios: finalRatios, color: es.colors[name] };
       });
 
       if(mode === "ratio_ts"){
@@ -1293,11 +1315,13 @@ function createEntityApp(cfg){
           return valuesInYear.reduce((sum, val) => sum + val, 0) / valuesInYear.length;
         });
 
-        traces.push({
-          x: years, y: strictAverage, name: "Szigorú átlag", type: "scatter", mode: "lines",
-          line: { width: 4, color: "#000000" }, connectgaps: false,
-          hoverinfo: "none", _unitSuffix: "%", _decimals: 1
-        });
+        if(entityObjects.length >= 2){
+          traces.push({
+            x: years, y: strictAverage, name: "Szigorú átlag", type: "scatter", mode: "lines",
+            line: { width: 4, color: "#000000" }, connectgaps: false,
+            hoverinfo: "none", _unitSuffix: "%", _decimals: 1
+          });
+        }
         layout.hovermode = "x";
         needsCustomHover = true;
 
