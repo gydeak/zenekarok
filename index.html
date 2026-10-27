@@ -932,9 +932,9 @@ function createEntityApp(cfg){
 
       fillSelect(el.orchSel1, es.names.map(n => ({value:n, label:n, selected:true})));
       fillSelect(el.yearSel1, es.years.map(y => ({value:y, label:y})));
-      fillSelect(el.indSel1, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="bevetel"})));
+      fillSelect(el.indSel1, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="kozpenz"})));
       fillSelect(el.orchSel2, es.names.map(n => ({value:n, label:n, selected:true})));
-      fillSelect(el.indSel2a, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="bevetel"})));
+      fillSelect(el.indSel2a, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="kozpenz"})));
 
       [el.orchSel1, el.yearSel1, el.indSel1, el.orchSel2, el.indSel2a].forEach(x => x.disabled = false);
       setStatus(`status-${cfg.suffix}`, "ok", `Betöltve — ${es.names.length} ${cfg.entityCountLabel}, ${es.years.length} év`);
