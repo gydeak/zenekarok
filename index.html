@@ -176,7 +176,7 @@
        ===================================================================== -->
   <div class="entity-block active" data-entity="zene">
 
-    <section class="panel">
+    <section class="panel" id="datapanel-zene" style="display:none;">
       <h2><span class="n">↑</span>Adatfájlok</h2>
       <div class="datapanel">
         <div class="datafield">
@@ -265,7 +265,7 @@
        ===================================================================== -->
   <div class="entity-block" data-entity="kor">
 
-    <section class="panel">
+    <section class="panel" id="datapanel-kor" style="display:none;">
       <h2><span class="n">↑</span>Adatfájlok</h2>
       <div class="datapanel">
         <div class="datafield">
@@ -1439,6 +1439,10 @@ function createEntityApp(cfg){
     r.readAsText(file, "UTF-8");
   });
 
+  // Az "Adatfájlok" szekció csak akkor jelenik meg, ha az automatikus betöltés valamelyik fájlnál sikertelen.
+  const dataPanel = document.getElementById(`datapanel-${cfg.suffix}`);
+  const showDataPanel = () => { if(dataPanel) dataPanel.style.display = ""; };
+
   // AUTOMATIKUS BETÖLTÉS INDÍTÁSA OLDALNYITÁSKOR
   fetch(cfg.csvFile)
     .then(res => {
@@ -1446,7 +1450,7 @@ function createEntityApp(cfg){
       return res.text();
     })
     .then(text => ingestEntityCSV(text))
-    .catch(() => setStatus(`status-${cfg.suffix}`, "pending", "Nincs automata fájl. Válassz egyet kézzel!"));
+    .catch(() => { showDataPanel(); setStatus(`status-${cfg.suffix}`, "pending", "Nincs automata fájl. Válassz egyet kézzel!"); });
 
   fetch("altalanos.csv")
     .then(res => {
@@ -1454,7 +1458,7 @@ function createEntityApp(cfg){
       return res.text();
     })
     .then(text => ingestAltalanosCSVLocal(text))
-    .catch(() => setStatus(`status-altalanos-${cfg.suffix}`, "pending", "Nincs automata fájl. Válassz egyet kézzel!"));
+    .catch(() => { showDataPanel(); setStatus(`status-altalanos-${cfg.suffix}`, "pending", "Nincs automata fájl. Válassz egyet kézzel!"); });
 }
 
 /* ---------------------------------------------------------------------
