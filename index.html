@@ -163,7 +163,7 @@
   <header>
     <p class="eyebrow">Kulturális finanszírozás &nbsp;·&nbsp; Magyarország</p>
     <h1>Zenekarok és kórusok adatvizualizációja</h1>
-    <p class="sub">Zenekari és kórus pénzügyi és statisztikai adatok éves bontásban, összevetve a nemzetgazdasági (GDP) és kulturális kiadási kontextussal. Az pénzügyi adatok az éves beszámolókból, az eredménykimutatásokból származnak, a koncert és látogatószámok a kultstat adataiból. A feltűnően hibás adatok nem jelennek meg, illetve értelemszerűen korrigálva lettek (pl. valószínű elütés). A rengeteg adat manuálisan került feldolgozásra esetenként szkennelt dokumentumokból, az esetleges hibákért felelősséget nem vállalok. A zenekart és kórust is működtető cégek adatai bértömeg-arányban vannak megbontva, mely az MRME-től és a KFD-től közérdekű adatigényléssel lett kikérve, az MNF-nél modellszámítással került becslésre. Kérdését, észrevételét írja meg: <a href="mailto:gydeak@gmail.com?subject=Zenekarok_vizualizacio">Kapcsolatfelvétel</a></p>
+    <p class="sub">Zenekari és kórus pénzügyi és statisztikai adatok éves bontásban, összevetve a nemzetgazdasági (GDP) és kulturális kiadási kontextussal. Az pénzügyi adatok az éves beszámolókból, az eredménykimutatásokból származnak, a koncert és látogatószámok a kultstat adataiból. A feltűnően hibás adatok nem jelennek meg, illetve értelemszerűen korrigálva lettek (pl. valószínű elütés). A rengeteg adat manuálisan került feldolgozásra esetenként szkennelt dokumentumokból, az esetleges hibákért felelősséget nem vállalok. A zenekart és kórust is működtető cégek adatai bértömeg-arányban vannak megbontva, mely az MRME-től és a KFD-től közérdekű adatigényléssel lett kikérve, az MNF-nél modellszámítással került becslésre. A modellszámításaz MRME egy főre jutó zenekari vs kórus bértömegarányának átlagával kiszámolt fix MNF zenekar vs kórus bárarányt használja. Kérdését, észrevételét írja meg: <a href="mailto:gydeak@gmail.com?subject=Zenekarok_vizualizacio">Kapcsolatfelvétel</a></p>
   </header>
 
   <div class="entity-tabs">
@@ -232,8 +232,9 @@
           <select id="indicator-select-2a-zene" disabled></select>
         </div>
         <div class="field">
-          <label for="indicator-select-2b-zene">Országos mutató</label>
+          <label for="indicator-select-2b-zene">Országos mutató / viszonyítási pont</label>
           <select id="indicator-select-2b-zene" disabled></select>
+          <div class="hint">Viszonyítási pont lehet országos adat, vagy a kiválasztott szervezet(ek) saját közpénz-, bevétel- vagy kiadás-adata.</div>
         </div>
         <div class="field field-baseyear" id="baseyear-field-zene">
           <label for="baseyear-select-zene">Kiindulási év (100%)</label>
@@ -321,8 +322,9 @@
           <select id="indicator-select-2a-kor" disabled></select>
         </div>
         <div class="field">
-          <label for="indicator-select-2b-kor">Országos mutató</label>
+          <label for="indicator-select-2b-kor">Országos mutató / viszonyítási pont</label>
           <select id="indicator-select-2b-kor" disabled></select>
+          <div class="hint">Viszonyítási pont lehet országos adat, vagy a kiválasztott szervezet(ek) saját közpénz-, bevétel- vagy kiadás-adata.</div>
         </div>
         <div class="field field-baseyear" id="baseyear-field-kor">
           <label for="baseyear-select-kor">Kiindulási év (100%)</label>
@@ -450,6 +452,20 @@ const ALTALANOS_META = {
 };
 
 const PC_SUFFIX = "__pc";
+
+/* ---------------------------------------------------------------------
+   VISZONYÍTÁSI PONT A SZERVEZET SAJÁT ADATAIBÓL
+   Az "Összevetés" B-oldali (országos) legördülőjében az országos
+   mutatók mellett az alábbi, zenekar/kórus CSV-beli mutatók is
+   választhatók viszonyítási pontnak (a GDP-hez hasonló logikával, de
+   szervezetenként). Az "ent:" előtag különbözteti meg őket az országos
+   kulcsoktól. A kiválasztott viszonyítási mutató eltűnik a szervezeti
+   mutatók (A) listájából. Új lehetőség a REF_ENTITY_KEYS bővítésével.
+   --------------------------------------------------------------------- */
+const REF_PREFIX = "ent:";
+const REF_ENTITY_KEYS = ["kozpenz", "bevetel", "kiadas"];
+function isEntityRef(key){ return typeof key === "string" && key.startsWith(REF_PREFIX); }
+function entityRefKey(key){ return key.slice(REF_PREFIX.length); }
 
 function metaFor(key, isEntity){
   if(key && key.endsWith(PC_SUFFIX)){
@@ -847,9 +863,10 @@ function getRadioValue(radios){
 // A rádiógomb-sor letiltása (és "Abszolút"-ra visszaállítása), ha a
 // jelenleg kiválasztott mutatóhoz nincs egy főre eső változat
 // (pl. darabszámok, index-jellegű mutatók).
-function updatePcRowState(rowEl, radios, baseKey, isEntity){
-  const ok = supportsPerCapita(baseKey, isEntity);
+function updatePcRowState(rowEl, radios, baseKey, isEntity, forceOff){
+  const ok = !forceOff && supportsPerCapita(baseKey, isEntity);
   rowEl.classList.toggle("disabled", !ok);
+  rowEl.title = forceOff ? "Szervezeti adat viszonyítási pontja mellett az egy főre vetítés nem értelmezett." : "";
   if(!ok){
     const absRadio = Array.from(radios).find(r => r.value === "abs");
     if(absRadio) absRadio.checked = true;
@@ -937,10 +954,10 @@ function createEntityApp(cfg){
       fillSelect(el.yearSel1, es.years.map(y => ({value:y, label:y})));
       fillSelect(el.indSel1, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="kozpenz"})));
       fillSelect(el.orchSel2, es.names.map(n => ({value:n, label:n, selected:true})));
-      fillSelect(el.indSel2a, es.indicatorKeys.map(k => ({value:k, label: metaFor(k,true).label, selected: k==="kozpenz"})));
 
       [el.orchSel1, el.yearSel1, el.indSel1, el.orchSel2, el.indSel2a].forEach(x => x.disabled = false);
       setStatus(`status-${cfg.suffix}`, "ok", `Betöltve — ${es.names.length} ${cfg.entityCountLabel}, ${es.years.length} év`);
+      refreshChart2Selectors();
       renderChart1(); maybeEnableChart2();
     } catch(err) {
       setStatus(`status-${cfg.suffix}`, "err", "Hiba a struktúrában.");
@@ -959,13 +976,55 @@ function createEntityApp(cfg){
         });
         return out;
       });
-      fillSelect(el.indSel2b, altIndicatorKeys.map(k => ({value:k, label: metaFor(k,false).label, selected: k==="gdp"})));
+      refreshChart2Selectors();
       el.indSel2b.disabled = false;
       setStatus(`status-altalanos-${cfg.suffix}`, "ok", `Betöltve — ${altData.length} év`);
       maybeEnableChart2();
     } catch(err) {
       setStatus(`status-altalanos-${cfg.suffix}`, "err", "Hiba a struktúrában.");
     }
+  }
+
+  // B (viszonyítási) lista: országos mutatók + a szervezet saját közpénz/bevétel/kiadás adata
+  function buildRefSelect(){
+    const prev = el.indSel2b.value;
+    el.indSel2b.innerHTML = "";
+    const g1 = document.createElement("optgroup");
+    g1.label = "Országos mutatók";
+    altIndicatorKeys.forEach(k => {
+      const o = document.createElement("option");
+      o.value = k; o.textContent = metaFor(k, false).label;
+      g1.appendChild(o);
+    });
+    el.indSel2b.appendChild(g1);
+    const refKeys = REF_ENTITY_KEYS.filter(k => es.indicatorKeys.includes(k));
+    if(refKeys.length){
+      const g2 = document.createElement("optgroup");
+      g2.label = `Viszonyítási pont: ${cfg.entityAdj} adat`;
+      refKeys.forEach(k => {
+        const o = document.createElement("option");
+        o.value = REF_PREFIX + k; o.textContent = metaFor(k, true).label;
+        g2.appendChild(o);
+      });
+      el.indSel2b.appendChild(g2);
+    }
+    const all = Array.from(el.indSel2b.options).map(o => o.value);
+    el.indSel2b.value = all.includes(prev) ? prev : (all.includes("gdp") ? "gdp" : all[0]);
+  }
+
+  // A (szervezeti) lista: a viszonyítási pontnak választott mutató kimarad belőle
+  function buildASelect(){
+    const bVal = el.indSel2b.value;
+    const excluded = isEntityRef(bVal) ? entityRefKey(bVal) : null;
+    const keys = es.indicatorKeys.filter(k => k !== excluded);
+    const cur = el.indSel2a.value;
+    const pick = [cur, "kozpenz", "berkotseg"].find(k => k && keys.includes(k)) || keys[0];
+    fillSelect(el.indSel2a, keys.map(k => ({ value: k, label: metaFor(k, true).label, selected: k === pick })));
+  }
+
+  function refreshChart2Selectors(){
+    if(altData) buildRefSelect();
+    if(es.data) buildASelect();
   }
 
   function maybeEnableChart2(){
@@ -980,17 +1039,23 @@ function createEntityApp(cfg){
     if(!es.data || !altData) return;
 
     const chosenEntities = getSelectedValues(el.orchSel2);
-    updatePcRowState(el.pcRow2, el.pcRadios2, el.indSel2a.value, true);
-    const indA = effectiveIndicatorKey(el.indSel2a.value, getRadioValue(el.pcRadios2), true);
     const indB = el.indSel2b.value;
+    const entRef = isEntityRef(indB);
+    updatePcRowState(el.pcRow2, el.pcRadios2, el.indSel2a.value, true, entRef);
+    const indA = effectiveIndicatorKey(el.indSel2a.value, getRadioValue(el.pcRadios2), true);
 
-    const altalanosYears = altData.filter(d => d[indB] !== null && d[indB] !== undefined).map(d => d.ev);
+    const altalanosYears = entRef ? null : altData.filter(d => d[indB] !== null && d[indB] !== undefined).map(d => d.ev);
 
     const validYears = es.years.filter(y => {
-      if(!altalanosYears.includes(y)) return false;
+      if(!entRef && !altalanosYears.includes(y)) return false;
       return chosenEntities.every(name => {
         const row = es.data.find(d => d.entity === name && d.ev === y);
-        return row && row[indA] !== null && row[indA] !== undefined;
+        if(!row || row[indA] === null || row[indA] === undefined) return false;
+        if(entRef){
+          const b = row[entityRefKey(indB)];
+          if(b === null || b === undefined) return false;
+        }
+        return true;
       });
     });
 
@@ -1087,15 +1152,17 @@ function createEntityApp(cfg){
     if(!es.data || !altData) return;
     if(syncIndBForMode()) updateBaseYearDropdown();
     let chosenEntities = getSelectedValues(el.orchSel2);
-    updatePcRowState(el.pcRow2, el.pcRadios2, el.indSel2a.value, true);
+    const indB = el.indSel2b.value;
+    const isEntRef = isEntityRef(indB);
+    const refKey = isEntRef ? entityRefKey(indB) : null;
+    updatePcRowState(el.pcRow2, el.pcRadios2, el.indSel2a.value, true, isEntRef);
     const pcMode2 = getRadioValue(el.pcRadios2);
     const isPerCapitaA = pcMode2 === "pc" && supportsPerCapita(el.indSel2a.value, true);
     const indA = effectiveIndicatorKey(el.indSel2a.value, pcMode2, true);
-    const indB = el.indSel2b.value;
     const mode = document.querySelector(`input[name="mode2-${cfg.suffix}"]:checked`).value;
 
     const metaA = metaFor(indA, true);
-    const metaB = metaFor(indB, false);
+    const metaB = isEntRef ? metaFor(refKey, true) : metaFor(indB, false);
     const bothComparable = metaA.unitClass === metaB.unitClass && metaA.unitClass !== "unknown";
 
     if(mode === "divergence" || mode === "divergence_rel"){
@@ -1106,10 +1173,31 @@ function createEntityApp(cfg){
 
     el.unitWarning.classList.toggle("show", mode !== "dual" && mode !== "divergence" && mode !== "divergence_rel" && !bothComparable);
 
+    // Viszonyítási érték: országos adatnál évenként egy szám; szervezeti
+    // viszonyítási pontnál szervezetenként (entRefVal), az "összesítve"
+    // nézethez pedig a kijelölt szervezetek összege (csak ha mindegyiknek van adata).
+    const entRefVal = (name, y) => {
+      const r = es.data.find(d => d.entity === name && d.ev === y);
+      const v = r ? r[refKey] : null;
+      return (v === undefined) ? null : v;
+    };
     const altalanosByYear = {};
-    altData.forEach(d => { altalanosByYear[d.ev] = d[indB]; });
+    if(isEntRef){
+      es.years.forEach(y => {
+        const vals = chosenEntities.map(n => entRefVal(n, y));
+        altalanosByYear[y] = (vals.length && vals.every(v => v !== null)) ? vals.reduce((s2, v) => s2 + v, 0) : null;
+      });
+    } else {
+      altData.forEach(d => { altalanosByYear[d.ev] = d[indB]; });
+    }
+    const bVal = (name, y) => isEntRef ? entRefVal(name, y) : altalanosByYear[y];
 
-    let years = es.years.filter(y => altalanosByYear[y] !== null && altalanosByYear[y] !== undefined);
+    let years;
+    if(isEntRef && (mode === "ratio_ts" || mode === "ratio_stacked")){
+      years = es.years.filter(y => chosenEntities.some(n => bVal(n, y) !== null));
+    } else {
+      years = es.years.filter(y => altalanosByYear[y] !== null && altalanosByYear[y] !== undefined);
+    }
 
     if (mode === "ratio_percent" || mode === "divergence" || mode === "divergence_rel") {
       years = years.filter(y => {
@@ -1142,12 +1230,17 @@ function createEntityApp(cfg){
         rawValuesByYear[y] = hasAllData ? relevantRows.reduce((s,d) => s + d[indA], 0) : null;
       });
 
-      const unitA = (metaA.unitClass === "money" || metaA.unitClass === "wage")
+      let unitA = (metaA.unitClass === "money" || metaA.unitClass === "wage")
         ? chooseUnit(Object.values(rawValuesByYear))
         : { divisor: 1, suffix: "" };
-      const unitB = (metaB.unitClass === "money" || metaB.unitClass === "wage")
+      let unitB = (metaB.unitClass === "money" || metaB.unitClass === "wage")
         ? chooseUnit(years.map(y => altalanosByYear[y]))
         : { divisor: 1, suffix: "" };
+      // Szervezeti viszonyítási pontnál mindkét tengely azonos pénzegységet kap.
+      if(isEntRef && unitA.divisor !== undefined && (metaA.unitClass === "money" || metaA.unitClass === "wage") && (metaB.unitClass === "money" || metaB.unitClass === "wage")){
+        unitB = chooseUnit([...Object.values(rawValuesByYear), ...years.map(y => altalanosByYear[y])]);
+        unitA = unitB;
+      }
 
       const valuesByYear = {};
       years.forEach(y => { valuesByYear[y] = (rawValuesByYear[y] === null) ? null : rawValuesByYear[y] / unitA.divisor; });
@@ -1203,7 +1296,7 @@ function createEntityApp(cfg){
           _unitSuffix: unitA.suffix + (metaA.perSuffix || ""), _decimals: 0
         },
         {
-          x: years, y: years.map(y => altalanosByYearScaled[y]), name: `${metaB.label} (országos)`,
+          x: years, y: years.map(y => altalanosByYearScaled[y]), name: `${metaB.label} (${isEntRef ? "összesítve" : "országos"})`,
           type: "scatter", mode: "lines+markers", line: { width: 2.5, color: "#b5442e", dash: "dot" }, yaxis: "y2",
           hoverinfo: "none",
           _unitSuffix: unitB.suffix + (metaB.perSuffix || ""), _decimals: 0
@@ -1241,16 +1334,31 @@ function createEntityApp(cfg){
           });
 
           traces.push({
-            x: years, y: indexData, name: `${name} (%)`,
+            x: years, y: indexData, name: isEntRef ? `${name} – ${metaA.label} (%)` : `${name} (%)`,
             type: "scatter", mode: "lines+markers",
             line: { width: 2, color: es.colors[name] },
             marker: { size: 6 }, connectgaps: false,
             hoverinfo: "none", _unitSuffix: "%", _decimals: 1
           });
         }
+
+        // Szervezeti viszonyítási pont: szervezetenként külön, szaggatott vonal
+        if(isEntRef){
+          const baseB = bVal(name, selectedBaseYear);
+          if(baseB && baseB > 0){
+            traces.push({
+              x: years, y: years.map(y => { const v = bVal(name, y); return (v === null || v === undefined) ? null : (v / baseB) * 100; }),
+              name: `${name} – ${metaB.label} (%)`,
+              type: "scatter", mode: "lines+markers",
+              line: { width: 2, color: es.colors[name], dash: "dot" },
+              marker: { size: 6, symbol: "diamond-open" }, yaxis: "y2", connectgaps: false,
+              hoverinfo: "none", _unitSuffix: "%", _decimals: 1
+            });
+          }
+        }
       });
 
-      if(baseValB && baseValB > 0) {
+      if(!isEntRef && baseValB && baseValB > 0) {
         const indexDataB = years.map(y => (altalanosByYear[y] / baseValB) * 100);
         traces.push({
           x: years, y: indexDataB, name: `${metaB.label} (országos bázis %)`,
@@ -1290,8 +1398,8 @@ function createEntityApp(cfg){
         document.getElementById(chart2Id).innerHTML = '<div class="empty-msg">Nincs választható közös bázisév az adatokban a kiválasztott szűréssel.</div>';
         return;
       }
-      const baseValB = altalanosByYear[selectedBaseYear];
-      if(!(baseValB > 0)) {
+      const baseValBnat = altalanosByYear[selectedBaseYear];
+      if(!isEntRef && !(baseValBnat > 0)) {
         document.getElementById(chart2Id).innerHTML = '<div class="empty-msg">Az országos mutató bázisévi értéke nem pozitív, a relatív divergencia nem értelmezhető.</div>';
         return;
       }
@@ -1299,10 +1407,11 @@ function createEntityApp(cfg){
       chosenEntities.forEach(name => {
         const baseRow = es.data.find(d => d.entity === name && d.ev === selectedBaseYear);
         const baseValA = baseRow ? baseRow[indA] : null;
-        if(!(baseValA > 0)) return;
+        const baseValB = isEntRef ? bVal(name, selectedBaseYear) : baseValBnat;
+        if(!(baseValA > 0) || !(baseValB > 0)) return;
         const relData = years.map(y => {
           const row = es.data.find(d => d.entity === name && d.ev === y);
-          const valB = altalanosByYear[y];
+          const valB = bVal(name, y);
           if(!row || row[indA] === null || row[indA] === undefined || !(valB > 0)) return null;
           const idxA = (row[indA] / baseValA) * 100;
           const idxB = (valB / baseValB) * 100;
@@ -1317,7 +1426,9 @@ function createEntityApp(cfg){
         });
       });
 
-      layout.yaxis = { title: `Eltérés a ${metaB.label}-től (%, bázis: ${selectedBaseYear})`,
+      layout.yaxis = { title: isEntRef
+                         ? `Eltérés a(z) ${metaB.label} alakulásától (%, bázis: ${selectedBaseYear})`
+                         : `Eltérés a ${metaB.label}-től (%, bázis: ${selectedBaseYear})`,
                        gridcolor: "#eeece6", zeroline:true, zerolinecolor:"#999", zerolinewidth:1.5, ticksuffix:"%" };
       layout.hovermode = "x";
       needsCustomHover = true;
@@ -1330,7 +1441,7 @@ function createEntityApp(cfg){
           const row = es.data.find(d => d.entity === name && d.ev === y);
           if(!row || row[indA] === null || row[indA] === undefined) return null;
           const valA = row[indA];
-          const valB = altalanosByYear[y];
+          const valB = bVal(name, y);
           return valB ? (valA / valB) * 100 : null;
         });
         return { name: name, ratios: ratios, color: es.colors[name] };
@@ -1410,10 +1521,17 @@ function createEntityApp(cfg){
   [el.orchSel1, el.yearSel1, el.indSel1].forEach(x => x.addEventListener("change", renderChart1));
   el.pcRadios1.forEach(r => r.addEventListener("change", renderChart1));
 
-  [el.orchSel2, el.indSel2a, el.indSel2b].forEach(x => x.addEventListener("change", () => {
+  [el.orchSel2, el.indSel2a].forEach(x => x.addEventListener("change", () => {
     updateBaseYearDropdown();
     renderChart2();
   }));
+  // A viszonyítási pont váltásakor a szervezeti mutatók listája is frissül
+  // (a viszonyítási mutató kikerül belőle).
+  el.indSel2b.addEventListener("change", () => {
+    buildASelect();
+    updateBaseYearDropdown();
+    renderChart2();
+  });
   el.pcRadios2.forEach(r => r.addEventListener("change", () => {
     updateBaseYearDropdown();
     renderChart2();
@@ -1466,8 +1584,8 @@ function createEntityApp(cfg){
    valamint a fül-váltó (tab) logika.
    --------------------------------------------------------------------- */
 document.addEventListener("DOMContentLoaded", () => {
-  createEntityApp({ suffix: "zene", csvFile: "zenekarok.csv", columnName: "zenekar", entityCountLabel: "zenekar" });
-  createEntityApp({ suffix: "kor",  csvFile: "korusok.csv",   columnName: "korus",   entityCountLabel: "kórus" });
+  createEntityApp({ suffix: "zene", csvFile: "zenekarok.csv", columnName: "zenekar", entityCountLabel: "zenekar", entityAdj: "zenekari" });
+  createEntityApp({ suffix: "kor",  csvFile: "korusok.csv",   columnName: "korus",   entityCountLabel: "kórus", entityAdj: "kórus" });
 
   document.querySelectorAll(".entity-tabs button").forEach(btn => {
     btn.addEventListener("click", () => {
