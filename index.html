@@ -216,6 +216,10 @@
         <label><input type="radio" name="pcmode1-zene" value="abs" checked> Abszolút érték</label>
         <label><input type="radio" name="pcmode1-zene" value="pc"> Egy főre vetítve (fő)</label>
       </div>
+      <div class="mode-row">
+        <label><input type="radio" name="mode1-zene" value="line" checked> Vonal</label>
+        <label><input type="radio" name="mode1-zene" value="stacked"> Halmozott oszlop</label>
+      </div>
       <div id="chart1-zene" class="chart"><div class="empty-msg">Tölts fel egy zenekarok.csv fájlt a fenti mezővel.</div></div>
     </section>
 
@@ -305,6 +309,10 @@
         <span class="pc-row-label">Mértéke:</span>
         <label><input type="radio" name="pcmode1-kor" value="abs" checked> Abszolút érték</label>
         <label><input type="radio" name="pcmode1-kor" value="pc"> Egy főre vetítve (fő)</label>
+      </div>
+      <div class="mode-row">
+        <label><input type="radio" name="mode1-kor" value="line" checked> Vonal</label>
+        <label><input type="radio" name="mode1-kor" value="stacked"> Halmozott oszlop</label>
       </div>
       <div id="chart1-kor" class="chart"><div class="empty-msg">Tölts fel egy korusok.csv fájlt a fenti mezővel.</div></div>
     </section>
@@ -909,6 +917,7 @@ function createEntityApp(cfg){
     pcRow1: document.getElementById(`pc-row-1-${cfg.suffix}`),
     pcRow2: document.getElementById(`pc-row-2-${cfg.suffix}`),
     pcRadios1: document.querySelectorAll(`input[name="pcmode1-${cfg.suffix}"]`),
+    modeRadios1: document.querySelectorAll(`input[name="mode1-${cfg.suffix}"]`),
     pcRadios2: document.querySelectorAll(`input[name="pcmode2-${cfg.suffix}"]`)
   };
   const chart1Id = `chart1-${cfg.suffix}`;
@@ -1111,6 +1120,7 @@ function createEntityApp(cfg){
       };
     });
 
+    const mode1 = getRadioValue(el.modeRadios1) === "stacked" ? "stacked" : "line";
     const layout = {
       title: titleConfig(buildChart1Title(meta, chosenEntities, chosenYears, pcMode1 === "pc" && supportsPerCapita(baseIndicator, true))),
       paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
@@ -1125,9 +1135,23 @@ function createEntityApp(cfg){
     chart1El.style.height = (CHART_BASE_HEIGHT + TITLE_AREA_HEIGHT) + "px";
     chart1El.innerHTML = "";
     applyAutoDecimals(traces);
-    chartTracesRef[chart1Id] = traces;
-    Plotly.newPlot(chart1Id, traces, layout, plotlyConfig("zenekarok_grafikon1"));
-    attachSortedHover(chart1Id);
+    if(mode1 === "stacked"){
+      // Halmozott oszlop: a kijelölt szervezetek értékei évenként egymásra kerülnek.
+      globalTooltip.style.display = "none";
+      const barTraces = traces.map(t => ({
+        x: t.x, y: t.y, name: t.name, type: "bar",
+        marker: { color: t.line.color },
+        hovertemplate: `${t.name}: <b>%{y:,.${t._decimals || 0}f}${t._unitSuffix ? " " + t._unitSuffix : ""}</b><extra></extra>`
+      }));
+      layout.barmode = "stack";
+      layout.hovermode = "x unified";
+      chartTracesRef[chart1Id] = barTraces;
+      Plotly.newPlot(chart1Id, barTraces, layout, plotlyConfig("zenekarok_grafikon1"));
+    } else {
+      chartTracesRef[chart1Id] = traces;
+      Plotly.newPlot(chart1Id, traces, layout, plotlyConfig("zenekarok_grafikon1"));
+      attachSortedHover(chart1Id);
+    }
   }
 
   /* ---------------------------------------------------------------------
@@ -1520,6 +1544,7 @@ function createEntityApp(cfg){
      --------------------------------------------------------------------- */
   [el.orchSel1, el.yearSel1, el.indSel1].forEach(x => x.addEventListener("change", renderChart1));
   el.pcRadios1.forEach(r => r.addEventListener("change", renderChart1));
+  el.modeRadios1.forEach(r => r.addEventListener("change", renderChart1));
 
   [el.orchSel2, el.indSel2a].forEach(x => x.addEventListener("change", () => {
     updateBaseYearDropdown();
