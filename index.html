@@ -1138,7 +1138,18 @@ function createEntityApp(cfg){
     if(mode1 === "stacked"){
       // Halmozott oszlop: a kijelölt szervezetek értékei évenként egymásra kerülnek.
       globalTooltip.style.display = "none";
-      const barTraces = traces.map(t => ({
+      // A sorrend ugyanaz, mint a 2. grafikon "Arány: Halmozott oszlop" nézetében:
+      // a legkorábbi első adatévű szervezet kerül legalulra, a többi az első
+      // megjelenésük sorrendjében halmozódik rá (azonos évnél a kijelölési sorrend marad).
+      const firstYearOf = t => {
+        const idx = t.y.findIndex(v => v !== null && v !== undefined);
+        return idx !== -1 ? t.x[idx] : 9999;
+      };
+      const orderedTraces = traces
+        .map((t, i) => ({ t: t, i: i, fy: firstYearOf(t) }))
+        .sort((a, b) => (a.fy - b.fy) || (a.i - b.i))
+        .map(o => o.t);
+      const barTraces = orderedTraces.map(t => ({
         x: t.x, y: t.y, name: t.name, type: "bar",
         marker: { color: t.line.color },
         hovertemplate: `${t.name}: <b>%{y:,.${t._decimals || 0}f}${t._unitSuffix ? " " + t._unitSuffix : ""}</b><extra></extra>`
